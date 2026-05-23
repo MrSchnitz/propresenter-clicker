@@ -1,4 +1,4 @@
-# ProPresenter Remote
+# ProPresenter clicker
 
 A lightweight web app for remote clicking of selected ProPresenter presentation because hardware clickers are too lame. An admin selects and locks a presentation; the speaker views slide thumbnails on their phone and triggers slides over the local network.
 
