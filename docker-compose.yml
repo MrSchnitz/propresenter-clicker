@@ -4,7 +4,7 @@ services:
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:
-      PROPRESENTER_HOST: host.docker.internal
+      PROPRESENTER_HOST: ${PROPRESENTER_HOST:-host.docker.internal}
       PROPRESENTER_PORT: ${PROPRESENTER_PORT:-56650}
       ADMIN_PIN: ${ADMIN_PIN:-1234}
       APP_PORT: 3000
