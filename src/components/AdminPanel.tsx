@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   adminGetPlaylists,
   adminGetPlaylist,
@@ -43,6 +43,8 @@ export default function AdminPanel({ pin, onLogout }: Props) {
   const [locked, setLocked] = useState<LockedInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // null = unknown (haven't checked yet), avoids banner flash on mount
+  const [ppConnected, setPpConnected] = useState<boolean | null>(null);
 
   const loadLock = useCallback(async () => {
     try {
@@ -53,12 +55,7 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     }
   }, [pin]);
 
-  useEffect(() => {
-    loadPlaylists();
-    loadLock();
-  }, [loadLock]);
-
-  async function loadPlaylists() {
+  const loadPlaylists = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -69,7 +66,53 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+    // t is read inside but only used for the error string; intentionally not in deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin]);
+
+  useEffect(() => {
+    loadPlaylists();
+    loadLock();
+  }, [loadLock, loadPlaylists]);
+
+  // Poll /api/health so we can show a "PP not running" banner and auto-recover
+  // when the user starts ProPresenter without needing a manual refresh.
+  const reloadRef = useRef(() => {
+    loadPlaylists();
+    loadLock();
+  });
+  reloadRef.current = () => {
+    loadPlaylists();
+    loadLock();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      let next: boolean;
+      try {
+        const res = await fetch("/api/health");
+        const data = await res.json();
+        next = data.pp === true;
+      } catch {
+        next = false;
+      }
+      if (cancelled) return;
+      setPpConnected((prev) => {
+        if (prev === false && next === true) {
+          // Transition offline → online: re-fetch lists
+          reloadRef.current();
+        }
+        return next;
+      });
+    };
+    check();
+    const interval = setInterval(check, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   async function togglePlaylist(id: string) {
     if (expandedPlaylist === id) {
@@ -127,6 +170,26 @@ export default function AdminPanel({ pin, onLogout }: Props) {
           </button>
         </div>
       </header>
+
+      {ppConnected === false && (
+        <div
+          className="mb-4 flex items-start gap-3 rounded-app border border-accent/40 bg-accent/10 p-4"
+          role="alert"
+        >
+          <svg
+            className="mt-0.5 h-5 w-5 flex-shrink-0 text-accent"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M12 2 L1 21 H23 Z M12 9 V14 M12 17 V18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className="min-w-0">
+            <p className="font-semibold text-accent">{t("ppNotConnected")}</p>
+            <p className="mt-1 text-sm text-fg-muted">{t("ppNotConnectedHelp")}</p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
         {locked ? (
