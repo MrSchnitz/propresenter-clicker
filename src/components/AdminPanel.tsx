@@ -7,6 +7,8 @@ import {
   adminUnlock,
   adminGetLock,
 } from "../api";
+import { useI18n } from "../i18n";
+import LanguageToggle from "./LanguageToggle";
 
 interface Props {
   pin: string;
@@ -26,7 +28,15 @@ interface LockedInfo {
   slideCount: number;
 }
 
+const btnSmall =
+  "rounded-app border border-fg-muted bg-transparent px-3.5 py-1.5 text-[13px] text-fg-muted";
+const btnDanger =
+  "whitespace-nowrap rounded-app bg-accent px-3.5 py-1.5 text-[13px] text-white";
+const btnLock =
+  "whitespace-nowrap rounded-app border border-success bg-transparent px-3 py-1 text-xs text-success disabled:bg-success disabled:text-black disabled:opacity-70";
+
 export default function AdminPanel({ pin, onLogout }: Props) {
+  const { t, plural } = useI18n();
   const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
   const [expandedPlaylist, setExpandedPlaylist] = useState<string | null>(null);
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
@@ -55,7 +65,7 @@ export default function AdminPanel({ pin, onLogout }: Props) {
       const data = await adminGetPlaylists(pin);
       setPlaylists(data || []);
     } catch {
-      setError("Cannot connect to ProPresenter. Is the API enabled?");
+      setError(t("cannotConnect"));
     } finally {
       setLoading(false);
     }
@@ -91,7 +101,7 @@ export default function AdminPanel({ pin, onLogout }: Props) {
       await adminLock(pin, uuid, name, slideCount);
       setLocked({ uuid, name, slideCount });
     } catch {
-      setError("Failed to lock presentation");
+      setError(t("failedToLock"));
     } finally {
       setLoading(false);
     }
@@ -102,53 +112,61 @@ export default function AdminPanel({ pin, onLogout }: Props) {
       await adminUnlock(pin);
       setLocked(null);
     } catch {
-      setError("Failed to unlock");
+      setError(t("failedToUnlock"));
     }
   }
 
   return (
-    <div className="admin-container">
-      <header className="admin-header">
-        <h1>Admin</h1>
-        <button className="btn-small" onClick={onLogout}>
-          Logout
-        </button>
+    <div className="mx-auto max-w-[600px] p-4">
+      <header className="mb-4 flex items-center justify-between">
+        <h1 className="text-[22px]">{t("admin")}</h1>
+        <div className="flex items-center gap-2">
+          <LanguageToggle />
+          <button className={btnSmall} onClick={onLogout}>
+            {t("logout")}
+          </button>
+        </div>
       </header>
 
-      <div className="lock-status">
+      <div className="mb-5 rounded-app bg-surface p-3.5">
         {locked ? (
-          <div className="locked-info">
+          <div className="flex items-center justify-between gap-3">
             <span>
-              Locked: <strong>{locked.name}</strong> ({locked.slideCount} slides)
+              {t("lockedLabel")}: <strong>{locked.name}</strong> ({locked.slideCount}{" "}
+              {plural("slides", locked.slideCount)})
             </span>
-            <button className="btn-danger" onClick={handleUnlock}>
-              Unlock
+            <button className={btnDanger} onClick={handleUnlock}>
+              {t("unlock")}
             </button>
           </div>
         ) : (
-          <p className="muted">No presentation locked for speaker</p>
+          <p className="text-sm text-fg-muted">{t("noPresentationLocked")}</p>
         )}
       </div>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="mt-2 text-sm text-accent">{error}</p>}
 
-      <h2>Playlists</h2>
-      {loading && !playlists.length && <p className="muted">Loading...</p>}
+      <h2 className="mb-3 text-base uppercase tracking-wider text-fg-muted">
+        {t("playlists")}
+      </h2>
+      {loading && !playlists.length && (
+        <p className="text-sm text-fg-muted">{t("loading")}</p>
+      )}
 
-      <ul className="playlist-list">
+      <ul className="list-none">
         {playlists.map((pl) => (
           <li key={pl.id.uuid}>
             <button
-              className="playlist-toggle"
               onClick={() => togglePlaylist(pl.id.uuid)}
+              className="block w-full border-0 border-b border-white/5 bg-transparent p-3 text-left text-[15px] text-fg"
             >
               {expandedPlaylist === pl.id.uuid ? "v" : ">"} {pl.id.name}
             </button>
 
             {expandedPlaylist === pl.id.uuid && (
-              <ul className="playlist-items">
+              <ul className="list-none pl-4">
                 {playlistItems.length === 0 && (
-                  <li className="muted">No items</li>
+                  <li className="text-sm text-fg-muted">{t("noItems")}</li>
                 )}
                 {playlistItems
                   .filter((item) => item.type === "presentation")
@@ -157,16 +175,17 @@ export default function AdminPanel({ pin, onLogout }: Props) {
                       item.presentation_info?.presentation_uuid ||
                       item.id.uuid;
                     return (
-                      <li key={presUuid || i} className="playlist-item">
-                        <span>{item.id?.name || "Untitled"}</span>
+                      <li
+                        key={presUuid || i}
+                        className="flex items-center justify-between border-b border-white/[0.04] px-3 py-2.5 text-sm"
+                      >
+                        <span>{item.id?.name || t("untitled")}</span>
                         <button
-                          className="btn-lock"
-                          onClick={() =>
-                            handleLock(presUuid, item.id.name)
-                          }
+                          className={btnLock}
+                          onClick={() => handleLock(presUuid, item.id.name)}
                           disabled={locked?.uuid === presUuid}
                         >
-                          {locked?.uuid === presUuid ? "Locked" : "Lock"}
+                          {locked?.uuid === presUuid ? t("lockedLabel") : t("lock")}
                         </button>
                       </li>
                     );

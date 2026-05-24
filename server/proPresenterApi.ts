@@ -1,78 +1,21 @@
-function getBaseUrl() {
-  const host = process.env.PROPRESENTER_HOST || "localhost";
-  const port = process.env.PROPRESENTER_PORT || "50001";
-  return `http://${host}:${port}`;
-}
+// Dispatcher: picks WebSocket (default, for PP < 7.9) or REST (PP 7.9+) backend
+// based on PROPRESENTER_PROTOCOL.
 
-async function apiGet(path: string): Promise<Response> {
-  return fetch(`${getBaseUrl()}${path}`);
-}
+const protocol = (process.env.PROPRESENTER_PROTOCOL || "ws").toLowerCase();
 
-// Library & Playlists
+const impl =
+  protocol === "rest"
+    ? await import("./proPresenterRestApi.js")
+    : await import("./proPresenterWsApi.js");
 
-export async function getPlaylists() {
-  const res = await apiGet("/v1/playlists");
-  return res.json();
-}
-
-export async function getPlaylist(id: string) {
-  const res = await apiGet(`/v1/playlist/${encodeURIComponent(id)}`);
-  return res.json();
-}
-
-export async function getLibraries() {
-  const res = await apiGet("/v1/libraries");
-  return res.json();
-}
-
-export async function getLibrary(id: string) {
-  const res = await apiGet(`/v1/library/${encodeURIComponent(id)}`);
-  return res.json();
-}
-
-// Presentations
-
-export async function getPresentation(uuid: string) {
-  const res = await apiGet(`/v1/presentation/${encodeURIComponent(uuid)}`);
-  return res.json();
-}
-
-// Slide thumbnails
-
-export async function getSlideThumb(
-  uuid: string,
-  slideIndex: number,
-  quality = 400
-): Promise<Response> {
-  return apiGet(
-    `/v1/presentation/${encodeURIComponent(uuid)}/thumbnail/${slideIndex}?quality=${quality}`
-  );
-}
-
-// Slide triggering
-
-export async function triggerSlide(uuid: string, slideIndex: number) {
-  return apiGet(
-    `/v1/presentation/${encodeURIComponent(uuid)}/trigger/${slideIndex}`
-  );
-}
-
-export async function triggerNext() {
-  return apiGet("/v1/trigger/next");
-}
-
-export async function triggerPrevious() {
-  return apiGet("/v1/trigger/previous");
-}
-
-// Status
-
-export async function getCurrentSlide() {
-  const res = await apiGet("/v1/slide/current");
-  return res.json();
-}
-
-export async function getActivePresentation() {
-  const res = await apiGet("/v1/presentation/current");
-  return res.json();
-}
+export const getPlaylists = impl.getPlaylists;
+export const getPlaylist = impl.getPlaylist;
+export const getLibraries = impl.getLibraries;
+export const getLibrary = impl.getLibrary;
+export const getPresentation = impl.getPresentation;
+export const getSlideThumb = impl.getSlideThumb;
+export const triggerSlide = impl.triggerSlide;
+export const triggerNext = impl.triggerNext;
+export const triggerPrevious = impl.triggerPrevious;
+export const getCurrentSlide = impl.getCurrentSlide;
+export const getActivePresentation = impl.getActivePresentation;
