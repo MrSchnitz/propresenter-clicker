@@ -52,17 +52,20 @@ export async function getSlideThumb(
 // Slide triggering
 
 export async function triggerSlide(uuid: string, slideIndex: number) {
-  return apiGet(
+  await apiGet(
     `/v1/presentation/${encodeURIComponent(uuid)}/trigger/${slideIndex}`
   );
+  return { ok: true };
 }
 
 export async function triggerNext() {
-  return apiGet("/v1/trigger/next");
+  await apiGet("/v1/trigger/next");
+  return { ok: true };
 }
 
 export async function triggerPrevious() {
-  return apiGet("/v1/trigger/previous");
+  await apiGet("/v1/trigger/previous");
+  return { ok: true };
 }
 
 // Status

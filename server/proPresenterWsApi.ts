@@ -85,7 +85,10 @@ function connect(): Promise<void> {
           typeof msg.slideIndex === "string"
             ? parseInt(msg.slideIndex, 10)
             : msg.slideIndex;
-        if (Number.isFinite(idx)) currentSlideIndex = idx;
+        if (Number.isFinite(idx)) {
+          currentSlideIndex = idx;
+          hasKnownSlide = true;
+        }
         if (msg.presentationPath) currentLocation = msg.presentationPath;
       }
 
@@ -157,11 +160,16 @@ function sendFireAndForget(payload: Record<string, unknown>): Promise<void> {
 
 // ---------- Caches ----------
 
-let playlistsRaw: any[] | null = null;
-let libraryRaw: string[] | null = null;
+// Per-presentation cache is kept because in WS mode the presentation response
+// embeds all slide thumbnails as base64 — re-fetching for every thumbnail call
+// would be expensive. Playlists and libraries are NOT cached so admin reflects
+// edits made in ProPresenter, matching REST mode.
 const presentationCache = new Map<string, any>();
 let currentLocation: string | null = null;
 let currentSlideIndex = 0;
+// False until a trigger or push gives us an authoritative slide index; used to
+// avoid falsely reporting "slide 0 is active" on a fresh connection.
+let hasKnownSlide = false;
 
 // ---------- Translation helpers ----------
 
@@ -199,12 +207,14 @@ function basename(path: string): string {
 
 // ---------- Public API (matches REST surface) ----------
 
+async function fetchPlaylistsRaw(): Promise<any[]> {
+  const resp = await request("playlistRequestAll", "playlistRequestAll");
+  return resp.playlistAll || [];
+}
+
 export async function getPlaylists() {
-  if (!playlistsRaw) {
-    const resp = await request("playlistRequestAll", "playlistRequestAll");
-    playlistsRaw = resp.playlistAll || [];
-  }
-  return playlistsRaw!.map((p: any, idx: number) => ({
+  const raw = await fetchPlaylistsRaw();
+  return raw.map((p: any, idx: number) => ({
     id: {
       uuid: p.playlistLocation,
       name: p.playlistName,
@@ -218,8 +228,8 @@ export async function getPlaylists() {
 }
 
 export async function getPlaylist(id: string) {
-  if (!playlistsRaw) await getPlaylists();
-  const p = playlistsRaw!.find((x: any) => x.playlistLocation === id);
+  const raw = await fetchPlaylistsRaw();
+  const p = raw.find((x: any) => x.playlistLocation === id);
   if (!p) return { items: [] };
   return {
     items: (p.playlist || []).map((item: any, i: number) =>
@@ -238,12 +248,10 @@ export async function getLibraries() {
 }
 
 export async function getLibrary(_id: string) {
-  if (!libraryRaw) {
-    const resp = await request("libraryRequest", "libraryRequest");
-    libraryRaw = resp.library || [];
-  }
+  const resp = await request("libraryRequest", "libraryRequest");
+  const library: string[] = resp.library || [];
   return {
-    items: libraryRaw!.map((path, i) => ({
+    items: library.map((path, i) => ({
       id: { uuid: path, name: basename(path), index: i },
       type: "presentation",
       presentation_info: { presentation_uuid: path },
@@ -337,22 +345,29 @@ export async function triggerSlide(uuid: string, slideIndex: number) {
   });
   currentLocation = uuid;
   currentSlideIndex = slideIndex;
+  hasKnownSlide = true;
   return { ok: true };
 }
 
 export async function triggerNext() {
   await sendFireAndForget({ action: "presentationTriggerNext" });
   currentSlideIndex++;
+  hasKnownSlide = true;
   return { ok: true };
 }
 
 export async function triggerPrevious() {
   await sendFireAndForget({ action: "presentationTriggerPrevious" });
   if (currentSlideIndex > 0) currentSlideIndex--;
+  hasKnownSlide = true;
   return { ok: true };
 }
 
 export async function getCurrentSlide() {
+  // Mirror REST: only report a slide index once we actually know one (either
+  // from a trigger we sent or from a push event), so the frontend doesn't
+  // falsely highlight slide 0 on a fresh connection.
+  if (!hasKnownSlide) return {};
   return { slide_index: currentSlideIndex };
 }
 
