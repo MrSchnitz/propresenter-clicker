@@ -98,36 +98,87 @@ export async function adminGetLock(pin: string) {
   );
 }
 
-// --- Speaker ---
-
-export async function speakerGetPresentation() {
-  return asJson(await fetch(`${BASE}/api/speaker/presentation`));
-}
-
-export function speakerSlideThumbUrl(index: number, quality = 400) {
-  return `${BASE}/api/speaker/slide/${index}/thumbnail?quality=${quality}`;
-}
-
-export async function speakerTriggerSlide(index: number) {
+export async function adminGetSpeakerPin(pin: string) {
   return asJson(
-    await fetch(`${BASE}/api/speaker/slide/${index}/trigger`, {
-      method: "POST",
+    await fetch(`${BASE}/api/admin/speaker-pin`, { headers: authHeaders(pin) })
+  );
+}
+
+export async function adminSetSpeakerPin(pin: string, speakerPin: string | null) {
+  return asJson(
+    await fetch(`${BASE}/api/admin/speaker-pin`, {
+      method: "PUT",
+      headers: authHeaders(pin),
+      body: JSON.stringify({ pin: speakerPin }),
     })
   );
 }
 
-export async function speakerNext() {
+// --- Speaker ---
+
+function speakerHeaders(pin?: string | null): HeadersInit {
+  return pin ? { Authorization: pin } : {};
+}
+
+// Returns { ok: true, required: boolean } when the PIN is valid (or none is
+// required); throws on 401 so callers can prompt for a new PIN.
+export async function speakerAuth(pin: string | null) {
+  const res = await fetch(`${BASE}/api/speaker/auth`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin }),
+  });
+  return asJson(res);
+}
+
+export async function speakerGetPresentation(pin?: string | null) {
   return asJson(
-    await fetch(`${BASE}/api/speaker/next`, { method: "POST" })
+    await fetch(`${BASE}/api/speaker/presentation`, {
+      headers: speakerHeaders(pin),
+    })
   );
 }
 
-export async function speakerPrevious() {
+export function speakerSlideThumbUrl(
+  index: number,
+  quality = 400,
+  pin?: string | null
+) {
+  const base = `${BASE}/api/speaker/slide/${index}/thumbnail?quality=${quality}`;
+  return pin ? `${base}&pin=${encodeURIComponent(pin)}` : base;
+}
+
+export async function speakerTriggerSlide(index: number, pin?: string | null) {
   return asJson(
-    await fetch(`${BASE}/api/speaker/previous`, { method: "POST" })
+    await fetch(`${BASE}/api/speaker/slide/${index}/trigger`, {
+      method: "POST",
+      headers: speakerHeaders(pin),
+    })
   );
 }
 
-export async function speakerGetStatus() {
-  return asJson(await fetch(`${BASE}/api/speaker/status`));
+export async function speakerNext(pin?: string | null) {
+  return asJson(
+    await fetch(`${BASE}/api/speaker/next`, {
+      method: "POST",
+      headers: speakerHeaders(pin),
+    })
+  );
+}
+
+export async function speakerPrevious(pin?: string | null) {
+  return asJson(
+    await fetch(`${BASE}/api/speaker/previous`, {
+      method: "POST",
+      headers: speakerHeaders(pin),
+    })
+  );
+}
+
+export async function speakerGetStatus(pin?: string | null) {
+  return asJson(
+    await fetch(`${BASE}/api/speaker/status`, {
+      headers: speakerHeaders(pin),
+    })
+  );
 }

@@ -1,6 +1,11 @@
 import { Router, Request, Response, NextFunction } from "express";
 import * as pp from "./proPresenterApi.js";
-import { getLockedPresentation, setLockedPresentation } from "./state.js";
+import {
+  getLockedPresentation,
+  setLockedPresentation,
+  getSpeakerPin,
+  setSpeakerPin,
+} from "./state.js";
 
 const router = Router();
 
@@ -10,6 +15,29 @@ function requirePin(req: Request, res: Response, next: NextFunction): void {
   const pin = req.headers.authorization;
   if (pin !== process.env.ADMIN_PIN) {
     res.status(401).json({ error: "Invalid PIN" });
+    return;
+  }
+  next();
+}
+
+// Speaker auth is opt-in: when no PIN is set, anyone with the URL can use the
+// speaker view (the original behavior). When the admin sets one, the same PIN
+// is required on every speaker endpoint via the Authorization header.
+function requireSpeakerPin(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const speakerPin = getSpeakerPin();
+  if (!speakerPin) {
+    next();
+    return;
+  }
+  // Thumbnails are loaded via <img src>, which can't carry Authorization
+  // headers, so accept the PIN via query parameter as a fallback.
+  const provided = req.headers.authorization ?? (req.query.pin as string | undefined);
+  if (provided !== speakerPin) {
+    res.status(401).json({ error: "Speaker PIN required" });
     return;
   }
   next();
@@ -90,9 +118,41 @@ router.get("/api/admin/lock", requirePin, (_req, res) => {
   res.json({ locked: getLockedPresentation() });
 });
 
-// --- Speaker routes (no auth) ---
+router.get("/api/admin/speaker-pin", requirePin, (_req, res) => {
+  // Returning the PIN itself (not just whether one is set) so the admin UI can
+  // pre-fill the input — same trust model as the locked presentation state.
+  res.json({ pin: getSpeakerPin() });
+});
 
-router.get("/api/speaker/presentation", (_req, res) => {
+router.put("/api/admin/speaker-pin", requirePin, (req, res) => {
+  const { pin } = req.body ?? {};
+  if (pin !== null && typeof pin !== "string") {
+    res.status(400).json({ error: "pin must be a string or null" });
+    return;
+  }
+  setSpeakerPin(pin);
+  res.json({ ok: true, pin: getSpeakerPin() });
+});
+
+// --- Speaker routes (gated by speaker PIN when one is set) ---
+
+// Public: the speaker UI uses this to decide whether to show a PIN screen, and
+// to validate the entered PIN before storing it locally.
+router.post("/api/speaker/auth", (req, res) => {
+  const speakerPin = getSpeakerPin();
+  if (!speakerPin) {
+    res.json({ ok: true, required: false });
+    return;
+  }
+  const { pin } = req.body ?? {};
+  if (pin === speakerPin) {
+    res.json({ ok: true, required: true });
+  } else {
+    res.status(401).json({ error: "Invalid PIN", required: true });
+  }
+});
+
+router.get("/api/speaker/presentation", requireSpeakerPin, (_req, res) => {
   const locked = getLockedPresentation();
   if (!locked) {
     res.json({ locked: false });
@@ -101,7 +161,7 @@ router.get("/api/speaker/presentation", (_req, res) => {
   res.json({ locked: true, ...locked });
 });
 
-router.get("/api/speaker/slide/:index/thumbnail", async (req, res) => {
+router.get("/api/speaker/slide/:index/thumbnail", requireSpeakerPin, async (req, res) => {
   const locked = getLockedPresentation();
   if (!locked) {
     res.status(404).json({ error: "No presentation locked" });
@@ -122,7 +182,7 @@ router.get("/api/speaker/slide/:index/thumbnail", async (req, res) => {
   }
 });
 
-router.post("/api/speaker/slide/:index/trigger", async (req, res) => {
+router.post("/api/speaker/slide/:index/trigger", requireSpeakerPin, async (req, res) => {
   const locked = getLockedPresentation();
   if (!locked) {
     res.status(404).json({ error: "No presentation locked" });
@@ -136,7 +196,7 @@ router.post("/api/speaker/slide/:index/trigger", async (req, res) => {
   }
 });
 
-router.post("/api/speaker/next", async (_req, res) => {
+router.post("/api/speaker/next", requireSpeakerPin, async (_req, res) => {
   try {
     await pp.triggerNext();
     res.json({ ok: true });
@@ -145,7 +205,7 @@ router.post("/api/speaker/next", async (_req, res) => {
   }
 });
 
-router.post("/api/speaker/previous", async (_req, res) => {
+router.post("/api/speaker/previous", requireSpeakerPin, async (_req, res) => {
   try {
     await pp.triggerPrevious();
     res.json({ ok: true });
@@ -154,7 +214,7 @@ router.post("/api/speaker/previous", async (_req, res) => {
   }
 });
 
-router.get("/api/speaker/status", async (_req, res) => {
+router.get("/api/speaker/status", requireSpeakerPin, async (_req, res) => {
   try {
     const data = await pp.getCurrentSlide();
     res.json(data);

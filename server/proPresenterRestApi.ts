@@ -67,12 +67,20 @@ export async function triggerPrevious() {
 
 // Status
 
+// ProPresenter 7's REST API exposes the current slide index under
+// /v1/presentation/slide_index as { presentation_index: { index, presentation_id } }.
+// The frontend just wants { slide_index }, so translate here to match the WS API.
 export async function getCurrentSlide() {
-  const res = await apiGet("/v1/slide/current");
-  return res.json();
+  const res = await apiGet("/v1/presentation/slide_index");
+  if (!res.ok) return {};
+  const data = await res.json();
+  const idx = data?.presentation_index?.index;
+  // Leave slide_index undefined when ProPresenter has no active slide so the
+  // frontend keeps its current highlight instead of jumping to slide 0.
+  return typeof idx === "number" ? { slide_index: idx } : {};
 }
 
 export async function getActivePresentation() {
-  const res = await apiGet("/v1/presentation/current");
+  const res = await apiGet("/v1/presentation/active");
   return res.json();
 }

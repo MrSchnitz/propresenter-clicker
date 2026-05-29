@@ -30,10 +30,10 @@ export default function DvdBouncer() {
 
     const particles: Particle[] = [];
 
-    function spawnConfetti(x: number, y: number) {
+    function spawnConfetti(x: number, y: number, count = 50) {
       const parent = el!.parentElement;
       if (!parent) return;
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < count; i++) {
         const p = document.createElement("div");
         p.style.cssText =
           "position:absolute;left:0;top:0;width:8px;height:8px;border-radius:2px;pointer-events:none;z-index:20;will-change:transform,opacity";
@@ -128,8 +128,20 @@ export default function DvdBouncer() {
 
     frameId = requestAnimationFrame(tick);
 
+    const handleTap = () => {
+      // Spawn a smaller burst from the logo's current center.
+      const cx = state.x + el.offsetWidth / 2;
+      const cy = state.y + el.offsetHeight / 2;
+      spawnConfetti(cx, cy, 24);
+    };
+    // pointerdown rather than click: the logo is constantly moving, so by the
+    // time the user releases, the logo has drifted out from under their finger
+    // and the click event never fires (down+up must land on the same element).
+    el.addEventListener("pointerdown", handleTap);
+
     return () => {
       cancelAnimationFrame(frameId);
+      el.removeEventListener("pointerdown", handleTap);
       for (const p of particles) p.el.remove();
     };
   }, []);
@@ -138,7 +150,7 @@ export default function DvdBouncer() {
     <div
       ref={elRef}
       aria-hidden="true"
-      className="pointer-events-none absolute top-0 left-0 -z-10 flex items-center rounded-lg px-4 py-2 opacity-60 shadow-lg select-none will-change-transform"
+      className="absolute top-0 left-0 -z-10 flex cursor-pointer items-center rounded-lg px-4 py-2 opacity-60 shadow-lg select-none will-change-transform"
     >
       <img
         src="/pp-logo.svg"

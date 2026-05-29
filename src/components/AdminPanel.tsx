@@ -6,6 +6,8 @@ import {
   adminLock,
   adminUnlock,
   adminGetLock,
+  adminGetSpeakerPin,
+  adminSetSpeakerPin,
 } from "../api";
 import { useI18n } from "../i18n";
 import LanguageToggle from "./LanguageToggle";
@@ -41,6 +43,9 @@ export default function AdminPanel({ pin, onLogout }: Props) {
   const [expandedPlaylist, setExpandedPlaylist] = useState<string | null>(null);
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
   const [locked, setLocked] = useState<LockedInfo | null>(null);
+  const [speakerPin, setSpeakerPinState] = useState<string | null>(null);
+  const [speakerPinDraft, setSpeakerPinDraft] = useState("");
+  const [speakerPinSaving, setSpeakerPinSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // null = unknown (haven't checked yet), avoids banner flash on mount
@@ -50,6 +55,16 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     try {
       const data = await adminGetLock(pin);
       setLocked(data.locked || null);
+    } catch {
+      /* ignore */
+    }
+  }, [pin]);
+
+  const loadSpeakerPin = useCallback(async () => {
+    try {
+      const data = await adminGetSpeakerPin(pin);
+      setSpeakerPinState(data?.pin ?? null);
+      setSpeakerPinDraft(data?.pin ?? "");
     } catch {
       /* ignore */
     }
@@ -73,7 +88,8 @@ export default function AdminPanel({ pin, onLogout }: Props) {
   useEffect(() => {
     loadPlaylists();
     loadLock();
-  }, [loadLock, loadPlaylists]);
+    loadSpeakerPin();
+  }, [loadLock, loadPlaylists, loadSpeakerPin]);
 
   // Poll /api/health so we can show a "PP not running" banner and auto-recover
   // when the user starts ProPresenter without needing a manual refresh.
@@ -159,6 +175,28 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     }
   }
 
+  async function handleSaveSpeakerPin() {
+    const next = speakerPinDraft.trim();
+    setSpeakerPinSaving(true);
+    try {
+      await adminSetSpeakerPin(pin, next.length ? next : null);
+      setSpeakerPinState(next.length ? next : null);
+    } finally {
+      setSpeakerPinSaving(false);
+    }
+  }
+
+  async function handleClearSpeakerPin() {
+    setSpeakerPinSaving(true);
+    try {
+      await adminSetSpeakerPin(pin, null);
+      setSpeakerPinState(null);
+      setSpeakerPinDraft("");
+    } finally {
+      setSpeakerPinSaving(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[600px] p-4">
       <header className="mb-4 flex items-center justify-between">
@@ -190,6 +228,39 @@ export default function AdminPanel({ pin, onLogout }: Props) {
           </div>
         </div>
       )}
+
+      <div className="mb-5 rounded-app bg-surface p-3.5">
+        <h2 className="mb-1 text-base font-semibold">{t("speakerPinSection")}</h2>
+        <p className="mb-3 text-xs text-fg-muted">{t("speakerPinHelp")}</p>
+        <p className="mb-3 text-sm">
+          {speakerPin ? t("speakerPinIsSet") : t("speakerPinNotSet")}
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder={t("speakerPinPlaceholder")}
+            value={speakerPinDraft}
+            onChange={(e) => setSpeakerPinDraft(e.target.value)}
+            className="flex-1 rounded-app border border-white/10 bg-card p-2.5 text-sm text-fg outline-none focus:border-accent"
+          />
+          <button
+            onClick={handleSaveSpeakerPin}
+            disabled={speakerPinSaving || speakerPinDraft.trim() === (speakerPin ?? "")}
+            className="rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {t("save")}
+          </button>
+          <button
+            onClick={handleClearSpeakerPin}
+            disabled={speakerPinSaving || !speakerPin}
+            className={btnSmall}
+          >
+            {t("clear")}
+          </button>
+        </div>
+      </div>
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
         {locked ? (

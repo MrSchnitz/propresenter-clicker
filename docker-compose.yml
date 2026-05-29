@@ -2,14 +2,14 @@ services:
   propresenter-remote:
     build: .
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
     environment:
       PROPRESENTER_HOST: ${PROPRESENTER_HOST:-host.docker.internal}
       PROPRESENTER_PORT: ${PROPRESENTER_PORT:-56650}
       PROPRESENTER_PROTOCOL: ${PROPRESENTER_PROTOCOL:-ws}
       PROPRESENTER_PASSWORD: ${PROPRESENTER_PASSWORD:-}
       ADMIN_PIN: ${ADMIN_PIN:-1234}
-      APP_PORT: 3000
+      APP_PORT: ${APP_PORT:-3000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

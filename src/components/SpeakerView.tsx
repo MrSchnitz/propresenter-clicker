@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
+  speakerAuth,
   speakerGetPresentation,
   speakerGetStatus,
   speakerTriggerSlide,
@@ -10,9 +11,49 @@ import {
 import { useI18n } from "../i18n";
 import LanguageToggle from "./LanguageToggle";
 import DvdBouncer from "./DvdBouncer";
+import SpeakerLogin from "./SpeakerLogin";
+
+const SPEAKER_PIN_STORAGE_KEY = "speakerAuth";
+const SPEAKER_PIN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+type StoredSpeakerAuth = { pin: string; expiresAt: number };
+
+function loadStoredSpeakerPin(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(SPEAKER_PIN_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredSpeakerAuth;
+    if (typeof parsed.pin === "string" && parsed.expiresAt > Date.now()) {
+      return parsed.pin;
+    }
+  } catch {
+    /* malformed — fall through to clear */
+  }
+  window.localStorage.removeItem(SPEAKER_PIN_STORAGE_KEY);
+  return null;
+}
+
+function storeSpeakerPin(pin: string) {
+  const entry: StoredSpeakerAuth = {
+    pin,
+    expiresAt: Date.now() + SPEAKER_PIN_TTL_MS,
+  };
+  window.localStorage.setItem(SPEAKER_PIN_STORAGE_KEY, JSON.stringify(entry));
+}
+
+function clearStoredSpeakerPin() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SPEAKER_PIN_STORAGE_KEY);
+}
+
+// "unknown" while we check whether a PIN is required; null = no PIN required;
+// string = authenticated with this PIN.
+type AuthState = "unknown" | { pin: string | null };
 
 export default function SpeakerView() {
   const { t } = useI18n();
+  const [auth, setAuth] = useState<AuthState>("unknown");
   const [presentation, setPresentation] = useState<{
     locked: boolean;
     uuid?: string;
@@ -22,37 +63,78 @@ export default function SpeakerView() {
   const [activeSlideIndex, setActiveSlideIndex] = useState<number>(-1);
   const activeSlideRef = useRef<HTMLButtonElement | null>(null);
 
-  const loadPresentation = useCallback(async () => {
-    try {
-      const data = await speakerGetPresentation();
-      setPresentation(data);
-    } catch {
-      /* offline */
-    }
+  // Probe the server on mount: if no PIN is required, sail through; if one is
+  // required, try the stored PIN before falling back to the login screen.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const stored = loadStoredSpeakerPin();
+      try {
+        const data = await speakerAuth(stored);
+        if (cancelled) return;
+        if (data?.required) {
+          setAuth({ pin: stored });
+        } else {
+          setAuth({ pin: null });
+        }
+      } catch {
+        if (cancelled) return;
+        clearStoredSpeakerPin();
+        setAuth({ pin: "" }); // triggers login screen below
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const pollStatus = useCallback(async () => {
+  // If any speaker call returns 401 the admin probably set/changed the PIN.
+  // Wipe local state so the user is sent back to the login screen.
+  const handleAuthError = useCallback((err: unknown) => {
+    if (err instanceof Error && /HTTP 401|Speaker PIN/i.test(err.message)) {
+      clearStoredSpeakerPin();
+      setAuth({ pin: "" });
+      return true;
+    }
+    return false;
+  }, []);
+
+  const loadPresentation = useCallback(async () => {
+    if (auth === "unknown" || auth.pin === "") return;
     try {
-      const data = await speakerGetStatus();
+      const data = await speakerGetPresentation(auth.pin);
+      setPresentation(data);
+    } catch (err) {
+      if (handleAuthError(err)) return;
+      /* offline */
+    }
+  }, [auth, handleAuthError]);
+
+  const pollStatus = useCallback(async () => {
+    if (auth === "unknown" || auth.pin === "") return;
+    try {
+      const data = await speakerGetStatus(auth.pin);
       if (data?.slide_index !== undefined) {
         setActiveSlideIndex(data.slide_index);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      handleAuthError(err);
     }
-  }, []);
+  }, [auth, handleAuthError]);
 
   useEffect(() => {
+    if (auth === "unknown" || auth.pin === "") return;
     loadPresentation();
     const presInterval = setInterval(loadPresentation, 3000);
     return () => clearInterval(presInterval);
-  }, [loadPresentation]);
+  }, [auth, loadPresentation]);
 
   useEffect(() => {
+    if (auth === "unknown" || auth.pin === "") return;
     pollStatus();
     const statusInterval = setInterval(pollStatus, 2000);
     return () => clearInterval(statusInterval);
-  }, [pollStatus]);
+  }, [auth, pollStatus]);
 
   useEffect(() => {
     activeSlideRef.current?.scrollIntoView({
@@ -61,26 +143,53 @@ export default function SpeakerView() {
     });
   }, [activeSlideIndex]);
 
+  const pin = auth !== "unknown" ? auth.pin : null;
+
   async function handleTrigger(index: number) {
     setActiveSlideIndex(index);
-    await speakerTriggerSlide(index);
+    try {
+      await speakerTriggerSlide(index, pin);
+    } catch (err) {
+      handleAuthError(err);
+    }
   }
 
   async function handleNext() {
     setActiveSlideIndex((prev) => prev + 1);
-    await speakerNext();
+    try {
+      await speakerNext(pin);
+    } catch (err) {
+      if (handleAuthError(err)) return;
+    }
     setTimeout(pollStatus, 500);
   }
 
   async function handlePrevious() {
     setActiveSlideIndex((prev) => Math.max(0, prev - 1));
-    await speakerPrevious();
+    try {
+      await speakerPrevious(pin);
+    } catch (err) {
+      if (handleAuthError(err)) return;
+    }
     setTimeout(pollStatus, 500);
+  }
+
+  function handleSpeakerAuth(p: string) {
+    storeSpeakerPin(p);
+    setAuth({ pin: p });
+  }
+
+  if (auth === "unknown") {
+    return <div className="flex min-h-dvh items-center justify-center" />;
+  }
+
+  if (auth.pin === "") {
+    return <SpeakerLogin onAuth={handleSpeakerAuth} />;
   }
 
   if (!presentation || !presentation.locked) {
     return (
-      <div className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden p-5 text-center">
+      <div className="relative isolate flex min-h-dvh flex-col items-center justify-center overflow-hidden p-5 text-center">
         {/* Ambient drifting orbs — deepest layer */}
         <div className="pointer-events-none absolute inset-0 -z-20 overflow-hidden">
           <div className="absolute -top-32 -left-24 h-80 w-80 animate-drift1 rounded-full bg-accent/25 blur-3xl" />
@@ -133,7 +242,7 @@ export default function SpeakerView() {
               }`}
             >
               <img
-                src={speakerSlideThumbUrl(index)}
+                src={speakerSlideThumbUrl(index, 400, pin)}
                 alt={`${t("slide")} ${index + 1}`}
                 loading="lazy"
                 className="block aspect-video w-full bg-black object-cover"

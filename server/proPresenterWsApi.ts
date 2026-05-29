@@ -73,6 +73,22 @@ function connect(): Promise<void> {
         }
         return;
       }
+
+      // ProPresenter pushes these whenever the active slide changes — including
+      // when the change is made in ProPresenter itself rather than via our app.
+      // Without tracking them, getCurrentSlide() returns stale local state.
+      if (
+        msg.action === "presentationTriggerIndex" ||
+        msg.action === "presentationSlideIndex"
+      ) {
+        const idx =
+          typeof msg.slideIndex === "string"
+            ? parseInt(msg.slideIndex, 10)
+            : msg.slideIndex;
+        if (Number.isFinite(idx)) currentSlideIndex = idx;
+        if (msg.presentationPath) currentLocation = msg.presentationPath;
+      }
+
       const queue = pending.get(msg.action);
       if (queue && queue.length > 0) {
         const p = queue.shift()!;
