@@ -1,0 +1,43 @@
+# Průvodce pro řečníka a admina
+
+## Pro řečníka
+
+Otevři v telefonu nebo tabletu adresu **presenter.cbjasenka.xyz** — nebo adresu, kterou ti dal technik (například `http://192.168.1.50:7777`).
+
+Na obrazovce uvidíš náhledy slidů aktuální prezentace.
+
+- Klepni na **šipku doprava** (nebo na pravou část obrazovky) pro přechod na **další slide**.
+- Klepni na **šipku doleva** (nebo na levou část obrazovky) pro **předchozí slide**.
+
+To je vše — ProPresenter se přepne automaticky.
+
+---
+
+## Pro admina
+
+Otevři v prohlížeči adresu **presenter.cbjasenka.xyz/admin** — nebo adresu od technika s `/admin` na konci (například `http://192.168.1.50:7777/admin`).
+
+### Přihlášení
+
+Zadej PIN, který ti dal technik, a klepni na **Přihlásit**.
+
+### Výběr prezentace
+
+Po přihlášení uvidíš seznam prezentací načtených z ProPresenteru.
+
+1. Klepni na prezentaci, kterou chceš použít.
+2. Potvrď výběr — prezentace se zamkne a řečník ji uvidí na svém telefonu.
+
+### Odhlášení
+
+Přihlášení platí 24 hodin. Pro ruční odhlášení klepni na tlačítko **Odhlásit** v horní části stránky.
+
+---
+
+## Nejčastější dotazy
+
+**Nevidím žádné slidy.** — Technik musí nejprve vybrat prezentaci v adminu.
+
+**Tlačítka nereagují.** — Ujisti se, že jsi připojen/a na stejnou Wi-Fi síť jako zbytek sestavy. Stránku obnov (zatáhni dolů nebo zmáčkni F5).
+
+**Přihlášení do adminu nefunguje.** — Zkontroluj PIN s technikem. Přihlášení vyprší po 24 hodinách.
