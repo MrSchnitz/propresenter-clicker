@@ -143,6 +143,21 @@ export default function SpeakerView() {
     });
   }, [activeSlideIndex]);
 
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timerRunning, setTimerRunning] = useState(false);
+
+  useEffect(() => {
+    if (!timerRunning) return;
+    const id = setInterval(() => setTimerSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [timerRunning]);
+
+  function formatTime(s: number) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+
   const pin = auth !== "unknown" ? auth.pin : null;
 
   async function handleTrigger(index: number) {
@@ -226,6 +241,24 @@ export default function SpeakerView() {
         </h1>
         <LanguageToggle />
       </header>
+
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/[0.08] bg-surface px-4 py-2">
+        <span className="font-mono text-2xl tabular-nums">
+          {formatTime(timerSeconds)}
+        </span>
+        <button
+          onClick={() => setTimerRunning((r) => !r)}
+          className="rounded-app bg-accent px-3 py-1 text-sm font-semibold text-white active:opacity-80"
+        >
+          {timerRunning ? "⏸" : "▶"}
+        </button>
+        <button
+          onClick={() => { setTimerRunning(false); setTimerSeconds(0); }}
+          className="rounded-app border border-white/20 px-3 py-1 text-sm text-fg-muted active:opacity-80"
+        >
+          ↺
+        </button>
+      </div>
 
       <div className="grid flex-1 grid-cols-1 gap-2 overflow-y-auto p-2 pb-20 min-[480px]:grid-cols-2 md:grid-cols-3 md:gap-3 md:p-3 lg:grid-cols-4">
         {slides.map((index) => {
