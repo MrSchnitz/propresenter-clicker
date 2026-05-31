@@ -15,11 +15,17 @@ To je vše — ProPresenter se přepne automaticky.
 
 ## Pro admina
 
-Otevři v prohlížeči adresu **presenter.cbjasenka.xyz/admin** — nebo adresu od technika s `/admin` na konci (například `http://192.168.1.50:7777/admin`).
+1. Zapni ProPresenter
+2. Zkontroluj, že běží Docker se spuštěným **propresenter-clicker** conteinerem. (volitelné, měl by se spustit po přihlášení)
+3. Otevři v prohlížeči adresu **presenter.cbjasenka.xyz/admin** — nebo adresu od technika s `/admin` na konci (například `http://192.168.1.50:7777/admin`).
 
 ### Přihlášení
 
 Zadej PIN, který ti dal technik, a klepni na **Přihlásit**.
+
+### Nastavení PINu pro řečníka
+
+Nastav libovolný nejlépe číselný PIN pro řečníka na začátku admin rozhraní, kvůli bezpečnosti. 
 
 ### Výběr prezentace
 
@@ -36,8 +42,10 @@ Přihlášení platí 24 hodin. Pro ruční odhlášení klepni na tlačítko **
 
 ## Nejčastější dotazy
 
+**Aplikace nefunguje** - Zkontroluj, že běží Docker a container **propresenter-clicker**. `Docker --> Containers --> propresenter-clicker --> tlačítko Play`
+
 **Nevidím žádné slidy.** — Technik musí nejprve vybrat prezentaci v adminu.
 
 **Tlačítka nereagují.** — Ujisti se, že jsi připojen/a na stejnou Wi-Fi síť jako zbytek sestavy. Stránku obnov (zatáhni dolů nebo zmáčkni F5).
 
-**Přihlášení do adminu nefunguje.** — Zkontroluj PIN s technikem. Přihlášení vyprší po 24 hodinách.
+**Přihlášení do adminu nefunguje.** — Zkontroluj PIN s technikem (ideálně se podívat na hodnotu `ADMIN_PIN` v .env souboru ve složce aplikace). Přihlášení vyprší po 24 hodinách.
