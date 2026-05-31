@@ -47,6 +47,7 @@ export default function AdminPanel({ pin, onLogout }: Props) {
   const [speakerPinDraft, setSpeakerPinDraft] = useState("");
   const [speakerPinSaving, setSpeakerPinSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [lockingUuid, setLockingUuid] = useState<string | null>(null);
   const [error, setError] = useState("");
   // null = unknown (haven't checked yet), avoids banner flash on mount
   const [ppConnected, setPpConnected] = useState<boolean | null>(null);
@@ -146,6 +147,7 @@ export default function AdminPanel({ pin, onLogout }: Props) {
   }
 
   async function handleLock(uuid: string, name: string) {
+    setLockingUuid(uuid);
     setLoading(true);
     try {
       const data = await adminGetPresentation(pin, uuid);
@@ -162,6 +164,7 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     } catch {
       setError(t("failedToLock"));
     } finally {
+      setLockingUuid(null);
       setLoading(false);
     }
   }
@@ -317,9 +320,13 @@ export default function AdminPanel({ pin, onLogout }: Props) {
                         <button
                           className={btnLock}
                           onClick={() => handleLock(presUuid, item.id.name)}
-                          disabled={locked?.uuid === presUuid}
+                          disabled={locked?.uuid === presUuid || lockingUuid !== null}
                         >
-                          {locked?.uuid === presUuid ? t("lockedLabel") : t("lock")}
+                          {lockingUuid === presUuid
+                            ? t("loading")
+                            : locked?.uuid === presUuid
+                              ? t("lockedLabel")
+                              : t("lock")}
                         </button>
                       </li>
                     );
