@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { resolvePpHost } from "./ppHost.js";
 
 // ---------- Connection management ----------
 
@@ -17,7 +18,7 @@ const pending = new Map<string, Pending[]>();
 
 function getConfig() {
   return {
-    host: process.env.PROPRESENTER_HOST || "localhost",
+    host: resolvePpHost(),
     port: process.env.PROPRESENTER_PORT || "50001",
     password: process.env.PROPRESENTER_PASSWORD || "",
   };

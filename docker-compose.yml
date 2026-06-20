@@ -4,7 +4,10 @@ services:
     ports:
       - "${APP_PORT:-3000}:${APP_PORT:-3000}"
     environment:
-      PROPRESENTER_HOST: ${PROPRESENTER_HOST:-host.docker.internal}
+      # Single source of truth: PROPRESENTER_HOST from .env. When it's "localhost"
+      # the app rewrites it to host.docker.internal inside the container (see
+      # server/ppHost.ts). Set it to a LAN IP for PP on another machine.
+      PROPRESENTER_HOST: ${PROPRESENTER_HOST:-localhost}
       PROPRESENTER_PORT: ${PROPRESENTER_PORT:-56650}
       PROPRESENTER_PROTOCOL: ${PROPRESENTER_PROTOCOL:-ws}
       PROPRESENTER_PASSWORD: ${PROPRESENTER_PASSWORD:-}

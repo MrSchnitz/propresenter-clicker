@@ -12,5 +12,10 @@ RUN npm ci --omit=dev
 COPY server/ server/
 COPY --from=build /app/dist dist/
 ENV NODE_ENV=production
-EXPOSE 3000
+# Lets the app rewrite a "localhost" PROPRESENTER_HOST to host.docker.internal,
+# so the same .env works both locally and in a container. See server/ppHost.ts.
+ENV RUNNING_IN_DOCKER=true
+# Informational only — the actual port is driven by APP_PORT at runtime, and
+# docker-compose handles the host:container port mapping.
+EXPOSE 7777
 CMD ["npx", "tsx", "server/index.ts"]

@@ -1,5 +1,7 @@
+import { resolvePpHost } from "./ppHost.js";
+
 function getBaseUrl() {
-  const host = process.env.PROPRESENTER_HOST || "localhost";
+  const host = resolvePpHost();
   const port = process.env.PROPRESENTER_PORT || "50001";
   return `http://${host}:${port}`;
 }

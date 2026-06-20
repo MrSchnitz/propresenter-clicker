@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+// The frontend and API are served on a single port (APP_PORT) by the Express
+// server — in dev via Vite middleware mode, in prod via static dist. So no dev
+// server port / API proxy is configured here.
 export default defineConfig({
   plugins: [
     react(),
@@ -50,13 +53,4 @@ export default defineConfig({
       },
     }),
   ],
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://localhost:3000",
-        changeOrigin: true,
-      },
-    },
-  },
 });
