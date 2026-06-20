@@ -272,14 +272,6 @@ export async function getPresentation(uuid: string) {
     raw = resp.presentation;
     if (raw) {
       presentationCache.set(uuid, raw);
-      const firstImg: string | undefined =
-        raw.presentationSlideGroups?.[0]?.groupSlides?.[0]?.slideImage;
-      if (firstImg) {
-        const bytes = Buffer.from(firstImg, "base64").length;
-        console.log(
-          `[pp-ws] thumbnail bytes: ${bytes} (${(bytes / 1024).toFixed(1)} KB) — header: ${firstImg.slice(0, 16)}`
-        );
-      }
     }
   }
   const groups = ((raw && raw.presentationSlideGroups) || []).map((g: any) => ({
@@ -350,30 +342,21 @@ export async function triggerSlide(uuid: string, slideIndex: number) {
   return { ok: true };
 }
 
-export async function triggerNext() {
-  await sendFireAndForget({ action: "presentationTriggerNext" });
-  currentSlideIndex++;
-  hasKnownSlide = true;
-  return { ok: true };
-}
-
-export async function triggerPrevious() {
-  await sendFireAndForget({ action: "presentationTriggerPrevious" });
-  if (currentSlideIndex > 0) currentSlideIndex--;
-  hasKnownSlide = true;
+// "Clear All": the remote protocol clears every layer with a single action.
+// After clearing, nothing is live, so forget the known slide index — this makes
+// getCurrentSlide() report no active slide and the speaker view drop its
+// highlight.
+export async function clear() {
+  await sendFireAndForget({ action: "clearAll" });
+  hasKnownSlide = false;
   return { ok: true };
 }
 
 export async function getCurrentSlide() {
   // Mirror REST: only report a slide index once we actually know one (either
   // from a trigger we sent or from a push event), so the frontend doesn't
-  // falsely highlight slide 0 on a fresh connection.
+  // falsely highlight slide 0 on a fresh connection. presentation_id lets the
+  // speaker view highlight the active slide in the correct presentation.
   if (!hasKnownSlide) return {};
-  return { slide_index: currentSlideIndex };
-}
-
-export async function getActivePresentation() {
-  if (!currentLocation) return {};
-  const raw = presentationCache.get(currentLocation);
-  return raw ? { presentation: { name: raw.presentationName } } : {};
+  return { slide_index: currentSlideIndex, presentation_id: currentLocation };
 }

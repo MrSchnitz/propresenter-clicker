@@ -5,23 +5,27 @@ export interface LockedPresentation {
 }
 
 interface AppState {
-  lockedPresentation: LockedPresentation | null;
+  lockedPresentations: LockedPresentation[];
   speakerPin: string | null;
 }
 
 const state: AppState = {
-  lockedPresentation: null,
+  lockedPresentations: [],
   speakerPin: null,
 };
 
-export function getLockedPresentation(): LockedPresentation | null {
-  return state.lockedPresentation;
+export function getLockedPresentations(): LockedPresentation[] {
+  return state.lockedPresentations;
 }
 
-export function setLockedPresentation(
-  presentation: LockedPresentation | null
+export function setLockedPresentations(
+  presentations: LockedPresentation[]
 ): void {
-  state.lockedPresentation = presentation;
+  state.lockedPresentations = presentations;
+}
+
+export function isLocked(uuid: string): boolean {
+  return state.lockedPresentations.some((p) => p.uuid === uuid);
 }
 
 export function getSpeakerPin(): string | null {

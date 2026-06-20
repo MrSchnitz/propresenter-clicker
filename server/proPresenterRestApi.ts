@@ -60,13 +60,23 @@ export async function triggerSlide(uuid: string, slideIndex: number) {
   return { ok: true };
 }
 
-export async function triggerNext() {
-  await apiGet("/v1/trigger/next");
-  return { ok: true };
-}
+// "Clear All": ProPresenter 7's REST API has no single clear-all endpoint, so we
+// clear each output layer (GET /v1/clear/layer/{layer}). This mirrors pressing
+// "Clear All" in ProPresenter — the screen goes blank.
+const CLEAR_LAYERS = [
+  "slide",
+  "media",
+  "video_input",
+  "props",
+  "messages",
+  "announcements",
+  "audio",
+] as const;
 
-export async function triggerPrevious() {
-  await apiGet("/v1/trigger/previous");
+export async function clear() {
+  await Promise.all(
+    CLEAR_LAYERS.map((layer) => apiGet(`/v1/clear/layer/${layer}`))
+  );
   return { ok: true };
 }
 
@@ -74,18 +84,20 @@ export async function triggerPrevious() {
 
 // ProPresenter 7's REST API exposes the current slide index under
 // /v1/presentation/slide_index as { presentation_index: { index, presentation_id } }.
-// The frontend just wants { slide_index }, so translate here to match the WS API.
+// The frontend wants { slide_index, presentation_id }; presentation_id lets the
+// speaker view highlight the active slide in the correct presentation.
 export async function getCurrentSlide() {
   const res = await apiGet("/v1/presentation/slide_index");
   if (!res.ok) return {};
   const data = await res.json();
   const idx = data?.presentation_index?.index;
+  // presentation_id is usually an object { uuid, name, index } in PP7, but some
+  // versions return a bare string — normalize to the uuid string either way.
+  const pid = data?.presentation_index?.presentation_id;
+  const presentationId = typeof pid === "string" ? pid : pid?.uuid;
   // Leave slide_index undefined when ProPresenter has no active slide so the
   // frontend keeps its current highlight instead of jumping to slide 0.
-  return typeof idx === "number" ? { slide_index: idx } : {};
-}
-
-export async function getActivePresentation() {
-  const res = await apiGet("/v1/presentation/active");
-  return res.json();
+  return typeof idx === "number"
+    ? { slide_index: idx, presentation_id: presentationId }
+    : {};
 }

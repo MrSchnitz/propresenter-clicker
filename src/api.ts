@@ -68,17 +68,15 @@ export async function adminGetPresentation(pin: string, uuid: string) {
   );
 }
 
-export async function adminLock(
+export async function adminSetLock(
   pin: string,
-  uuid: string,
-  name: string,
-  slideCount: number
+  items: { uuid: string; name: string }[]
 ) {
   return asJson(
     await fetch(`${BASE}/api/admin/lock`, {
-      method: "POST",
+      method: "PUT",
       headers: authHeaders(pin),
-      body: JSON.stringify({ uuid, name, slideCount }),
+      body: JSON.stringify({ items }),
     })
   );
 }
@@ -140,44 +138,48 @@ export async function speakerGetPresentation(pin?: string | null) {
 }
 
 export function speakerSlideThumbUrl(
+  uuid: string,
   index: number,
   quality = 400,
   pin?: string | null
 ) {
-  const base = `${BASE}/api/speaker/slide/${index}/thumbnail?quality=${quality}`;
+  const base = `${BASE}/api/speaker/presentation/${encodeURIComponent(
+    uuid
+  )}/slide/${index}/thumbnail?quality=${quality}`;
   return pin ? `${base}&pin=${encodeURIComponent(pin)}` : base;
 }
 
-export async function speakerTriggerSlide(index: number, pin?: string | null) {
+export async function speakerTriggerSlide(
+  uuid: string,
+  index: number,
+  pin?: string | null
+) {
   return asJson(
-    await fetch(`${BASE}/api/speaker/slide/${index}/trigger`, {
-      method: "POST",
-      headers: speakerHeaders(pin),
-    })
-  );
-}
-
-export async function speakerNext(pin?: string | null) {
-  return asJson(
-    await fetch(`${BASE}/api/speaker/next`, {
-      method: "POST",
-      headers: speakerHeaders(pin),
-    })
-  );
-}
-
-export async function speakerPrevious(pin?: string | null) {
-  return asJson(
-    await fetch(`${BASE}/api/speaker/previous`, {
-      method: "POST",
-      headers: speakerHeaders(pin),
-    })
+    await fetch(
+      `${BASE}/api/speaker/presentation/${encodeURIComponent(
+        uuid
+      )}/slide/${index}/trigger`,
+      {
+        method: "POST",
+        headers: speakerHeaders(pin),
+      }
+    )
   );
 }
 
 export async function speakerGetStatus(pin?: string | null) {
   return asJson(
     await fetch(`${BASE}/api/speaker/status`, {
+      headers: speakerHeaders(pin),
+    })
+  );
+}
+
+// Clear All in ProPresenter — blanks every output layer.
+export async function speakerClear(pin?: string | null) {
+  return asJson(
+    await fetch(`${BASE}/api/speaker/clear`, {
+      method: "POST",
       headers: speakerHeaders(pin),
     })
   );

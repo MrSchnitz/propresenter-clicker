@@ -1,13 +1,28 @@
 import { Router, Request, Response, NextFunction } from "express";
 import * as pp from "./proPresenterApi.js";
 import {
-  getLockedPresentation,
-  setLockedPresentation,
+  getLockedPresentations,
+  setLockedPresentations,
+  isLocked,
   getSpeakerPin,
   setSpeakerPin,
+  LockedPresentation,
 } from "./state.js";
 
 const router = Router();
+
+// Sum the slides across a presentation's groups. ProPresenter returns slides
+// nested under groups; the speaker view works with a flat per-presentation
+// index, so we only need the total count here.
+function computeSlideCount(presentation: {
+  groups?: { slides?: unknown[] }[];
+}): number {
+  if (!presentation?.groups) return 0;
+  return presentation.groups.reduce(
+    (sum, g) => sum + (g.slides?.length || 0),
+    0
+  );
+}
 
 // --- Admin auth middleware ---
 
@@ -99,23 +114,47 @@ router.get("/api/admin/presentation/:uuid", requirePin, async (req, res) => {
   }
 });
 
-router.post("/api/admin/lock", requirePin, (req, res) => {
-  const { uuid, name, slideCount } = req.body;
-  if (!uuid || !name) {
-    res.status(400).json({ error: "uuid and name required" });
+// Set the full locked set. The client always sends the desired complete list of
+// { uuid, name }, so this one endpoint covers add, remove, reorder and locking a
+// whole playlist. Slide counts are resolved here (in parallel) so the client
+// doesn't need a round-trip per presentation.
+router.put("/api/admin/lock", requirePin, async (req, res) => {
+  const items = req.body?.items;
+  if (!Array.isArray(items)) {
+    res.status(400).json({ error: "items array required" });
     return;
   }
-  setLockedPresentation({ uuid, name, slideCount: slideCount || 0 });
-  res.json({ ok: true, locked: getLockedPresentation() });
+  // De-dupe by uuid while preserving order.
+  const seen = new Set<string>();
+  const unique = items.filter(
+    (it: { uuid?: string; name?: string }) =>
+      it?.uuid && !seen.has(it.uuid) && (seen.add(it.uuid), true)
+  );
+  try {
+    const presentations: LockedPresentation[] = await Promise.all(
+      unique.map(async (it: { uuid: string; name: string }) => {
+        const data = await pp.getPresentation(it.uuid);
+        return {
+          uuid: it.uuid,
+          name: it.name || data?.presentation?.name || "",
+          slideCount: computeSlideCount(data?.presentation),
+        };
+      })
+    );
+    setLockedPresentations(presentations);
+    res.json({ ok: true, presentations: getLockedPresentations() });
+  } catch {
+    res.status(502).json({ error: "Cannot reach ProPresenter" });
+  }
 });
 
 router.delete("/api/admin/lock", requirePin, (_req, res) => {
-  setLockedPresentation(null);
+  setLockedPresentations([]);
   res.json({ ok: true });
 });
 
 router.get("/api/admin/lock", requirePin, (_req, res) => {
-  res.json({ locked: getLockedPresentation() });
+  res.json({ presentations: getLockedPresentations() });
 });
 
 router.get("/api/admin/speaker-pin", requirePin, (_req, res) => {
@@ -153,61 +192,56 @@ router.post("/api/speaker/auth", (req, res) => {
 });
 
 router.get("/api/speaker/presentation", requireSpeakerPin, (_req, res) => {
-  const locked = getLockedPresentation();
-  if (!locked) {
-    res.json({ locked: false });
-    return;
-  }
-  res.json({ locked: true, ...locked });
+  const presentations = getLockedPresentations();
+  res.json({ locked: presentations.length > 0, presentations });
 });
 
-router.get("/api/speaker/slide/:index/thumbnail", requireSpeakerPin, async (req, res) => {
-  const locked = getLockedPresentation();
-  if (!locked) {
-    res.status(404).json({ error: "No presentation locked" });
-    return;
+router.get(
+  "/api/speaker/presentation/:uuid/slide/:index/thumbnail",
+  requireSpeakerPin,
+  async (req, res) => {
+    const { uuid } = req.params;
+    if (!isLocked(uuid)) {
+      res.status(404).json({ error: "Presentation not available" });
+      return;
+    }
+    try {
+      const ppRes = await pp.getSlideThumb(
+        uuid,
+        parseInt(req.params.index, 10),
+        parseInt((req.query.quality as string) || "400", 10)
+      );
+      const buffer = await ppRes.arrayBuffer();
+      res.set("Content-Type", ppRes.headers.get("content-type") || "image/jpeg");
+      res.set("Cache-Control", "public, max-age=60");
+      res.send(Buffer.from(buffer));
+    } catch {
+      res.status(502).json({ error: "Cannot reach ProPresenter" });
+    }
   }
-  try {
-    const ppRes = await pp.getSlideThumb(
-      locked.uuid,
-      parseInt(req.params.index, 10),
-      parseInt((req.query.quality as string) || "400", 10)
-    );
-    const buffer = await ppRes.arrayBuffer();
-    res.set("Content-Type", ppRes.headers.get("content-type") || "image/jpeg");
-    res.set("Cache-Control", "public, max-age=60");
-    res.send(Buffer.from(buffer));
-  } catch {
-    res.status(502).json({ error: "Cannot reach ProPresenter" });
-  }
-});
+);
 
-router.post("/api/speaker/slide/:index/trigger", requireSpeakerPin, async (req, res) => {
-  const locked = getLockedPresentation();
-  if (!locked) {
-    res.status(404).json({ error: "No presentation locked" });
-    return;
+router.post(
+  "/api/speaker/presentation/:uuid/slide/:index/trigger",
+  requireSpeakerPin,
+  async (req, res) => {
+    const { uuid } = req.params;
+    if (!isLocked(uuid)) {
+      res.status(404).json({ error: "Presentation not available" });
+      return;
+    }
+    try {
+      await pp.triggerSlide(uuid, parseInt(req.params.index, 10));
+      res.json({ ok: true });
+    } catch {
+      res.status(502).json({ error: "Cannot reach ProPresenter" });
+    }
   }
-  try {
-    await pp.triggerSlide(locked.uuid, parseInt(req.params.index, 10));
-    res.json({ ok: true });
-  } catch {
-    res.status(502).json({ error: "Cannot reach ProPresenter" });
-  }
-});
+);
 
-router.post("/api/speaker/next", requireSpeakerPin, async (_req, res) => {
+router.post("/api/speaker/clear", requireSpeakerPin, async (_req, res) => {
   try {
-    await pp.triggerNext();
-    res.json({ ok: true });
-  } catch {
-    res.status(502).json({ error: "Cannot reach ProPresenter" });
-  }
-});
-
-router.post("/api/speaker/previous", requireSpeakerPin, async (_req, res) => {
-  try {
-    await pp.triggerPrevious();
+    await pp.clear();
     res.json({ ok: true });
   } catch {
     res.status(502).json({ error: "Cannot reach ProPresenter" });
@@ -216,6 +250,8 @@ router.post("/api/speaker/previous", requireSpeakerPin, async (_req, res) => {
 
 router.get("/api/speaker/status", requireSpeakerPin, async (_req, res) => {
   try {
+    // Returns { slide_index, presentation_id } so the speaker view can highlight
+    // the active slide in the correct presentation across the locked set.
     const data = await pp.getCurrentSlide();
     res.json(data);
   } catch {

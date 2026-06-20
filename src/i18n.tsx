@@ -35,6 +35,12 @@ const translations: Record<Lang, Dict> = {
     noItems: "Žádné položky",
     untitled: "Bez názvu",
     lock: "Vybrat",
+    lockPlaylist: "Vybrat celý playlist",
+    add: "Přidat",
+    unselect: "Odebrat",
+    remove: "Odebrat",
+    clearAll: "Smazat vše",
+    chosenPresentations: "Vybrané prezentace",
 
     // SpeakerView
     slogan: "Protože hardwarový presenter to nedává...",
@@ -42,6 +48,9 @@ const translations: Record<Lang, Dict> = {
     previous: "Předchozí",
     next: "Další",
     slide: "Snímek",
+    lastSlide: "Poslední snímek",
+    selectSlide: "Vyberte snímek",
+    clearScreen: "Vymazat",
 
     // SpeakerLogin / speaker PIN admin section
     speakerLoginTitle: "Přihlášení řečníka",
@@ -75,12 +84,21 @@ const translations: Record<Lang, Dict> = {
     noItems: "No items",
     untitled: "Untitled",
     lock: "Choose",
+    lockPlaylist: "Choose whole playlist",
+    add: "Add",
+    unselect: "Unselect",
+    remove: "Remove",
+    clearAll: "Clear all",
+    chosenPresentations: "Chosen presentations",
 
     slogan: "Because hardware clicker is too lame...",
     waiting: "Waiting for admin to select a presentation...",
     previous: "Previous",
     next: "Next",
     slide: "Slide",
+    lastSlide: "Last slide",
+    selectSlide: "Select a slide",
+    clearScreen: "Clear",
 
     speakerLoginTitle: "Speaker Login",
     speakerPinSection: "Speaker PIN",

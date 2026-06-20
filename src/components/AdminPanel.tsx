@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   adminGetPlaylists,
   adminGetPlaylist,
-  adminGetPresentation,
-  adminLock,
+  adminSetLock,
   adminUnlock,
   adminGetLock,
   adminGetSpeakerPin,
@@ -35,27 +34,74 @@ const btnSmall =
 const btnDanger =
   "whitespace-nowrap rounded-app bg-accent px-3.5 py-1.5 text-[13px] text-white";
 const btnLock =
-  "whitespace-nowrap rounded-app border border-success bg-transparent px-3 py-1 text-xs text-success disabled:bg-success disabled:text-black disabled:opacity-70";
+  "whitespace-nowrap rounded-app border border-success bg-transparent px-3 py-1 text-xs text-success disabled:opacity-50";
+// Selected state doubles as the "unselect" action — styled with the app's
+// accent (red/pink), matching the other destructive buttons (e.g. Clear all).
+const btnUnselect =
+  "whitespace-nowrap rounded-app border border-accent bg-accent px-3 py-1 text-xs text-white disabled:opacity-50";
+
+// The uuid used to trigger/fetch a presentation comes from presentation_info
+// when present (REST), falling back to the item's own uuid (WS library items).
+function presUuidOf(item: PlaylistItem): string {
+  return item.presentation_info?.presentation_uuid || item.id.uuid;
+}
+
+// Flatten a playlist (including nested groups) to its presentation items.
+function collectPresentations(
+  items: PlaylistItem[]
+): { uuid: string; name: string }[] {
+  const out: { uuid: string; name: string }[] = [];
+  for (const item of items) {
+    if (item.type === "presentation") {
+      out.push({ uuid: presUuidOf(item), name: item.id?.name || "" });
+    } else if (item.items) {
+      out.push(...collectPresentations(item.items));
+    }
+  }
+  return out;
+}
 
 export default function AdminPanel({ pin, onLogout }: Props) {
   const { t, plural } = useI18n();
   const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
   const [expandedPlaylist, setExpandedPlaylist] = useState<string | null>(null);
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
-  const [locked, setLocked] = useState<LockedInfo | null>(null);
+  // Cache of each playlist's flattened presentations, so we can show whether a
+  // whole playlist is selected (and toggle it) without re-fetching every render.
+  const [playlistPresentations, setPlaylistPresentations] = useState<
+    Record<string, { uuid: string; name: string }[]>
+  >({});
+  const [locked, setLocked] = useState<LockedInfo[]>([]);
   const [speakerPin, setSpeakerPinState] = useState<string | null>(null);
   const [speakerPinDraft, setSpeakerPinDraft] = useState("");
   const [speakerPinSaving, setSpeakerPinSaving] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [lockingUuid, setLockingUuid] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // null = unknown (haven't checked yet), avoids banner flash on mount
   const [ppConnected, setPpConnected] = useState<boolean | null>(null);
 
+  const isAdded = useCallback(
+    (uuid: string) => locked.some((l) => l.uuid === uuid),
+    [locked]
+  );
+  // Current locked set expressed as the {uuid,name} items the API expects.
+  const currentItems = useCallback(
+    () => locked.map((l) => ({ uuid: l.uuid, name: l.name })),
+    [locked]
+  );
+
+  // A playlist is "fully selected" when we know its presentations and every one
+  // of them is in the locked set. Unknown (not yet fetched) → not selected.
+  function playlistFullySelected(playlistId: string): boolean {
+    const found = playlistPresentations[playlistId];
+    return !!found && found.length > 0 && found.every((p) => isAdded(p.uuid));
+  }
+
   const loadLock = useCallback(async () => {
     try {
       const data = await adminGetLock(pin);
-      setLocked(data.locked || null);
+      setLocked(data.presentations || []);
     } catch {
       /* ignore */
     }
@@ -91,6 +137,34 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     loadLock();
     loadSpeakerPin();
   }, [loadLock, loadPlaylists, loadSpeakerPin]);
+
+  // Prefetch each playlist's presentations in the background so the "whole
+  // playlist" buttons can show their selected state without the user expanding
+  // them first (e.g. after a reload). Best-effort and sequential to stay gentle.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const pl of playlists) {
+        const id = pl.id.uuid;
+        if (playlistPresentations[id]) continue;
+        try {
+          const data = await adminGetPlaylist(pin, id);
+          if (cancelled) return;
+          setPlaylistPresentations((m) =>
+            m[id] ? m : { ...m, [id]: collectPresentations(data?.items || []) }
+          );
+        } catch {
+          /* ignore — button just falls back to the default state */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // playlistPresentations intentionally omitted: the in-loop guard avoids
+    // refetching, and including it would restart the loop on every populate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlists, pin]);
 
   // Poll /api/health so we can show a "PP not running" banner and auto-recover
   // when the user starts ProPresenter without needing a manual refresh.
@@ -140,41 +214,80 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     setExpandedPlaylist(id);
     try {
       const data = await adminGetPlaylist(pin, id);
-      setPlaylistItems(data?.items || []);
+      const items = data?.items || [];
+      setPlaylistItems(items);
+      setPlaylistPresentations((m) => ({ ...m, [id]: collectPresentations(items) }));
     } catch {
       setPlaylistItems([]);
     }
   }
 
-  async function handleLock(uuid: string, name: string) {
-    setLockingUuid(uuid);
-    setLoading(true);
-    try {
-      const data = await adminGetPresentation(pin, uuid);
-      const pres = data?.presentation;
-      const slideCount = pres?.groups
-        ? pres.groups.reduce(
-            (sum: number, g: { slides?: unknown[] }) =>
-              sum + (g.slides?.length || 0),
-            0
-          )
-        : 0;
-      await adminLock(pin, uuid, name, slideCount);
-      setLocked({ uuid, name, slideCount });
-    } catch {
-      setError(t("failedToLock"));
-    } finally {
-      setLockingUuid(null);
-      setLoading(false);
+  // Persist a new locked set and adopt the server's response (which fills in
+  // slide counts). The server de-dupes by uuid and resolves counts in parallel.
+  const persistLock = useCallback(
+    async (items: { uuid: string; name: string }[]) => {
+      setSaving(true);
+      setError("");
+      try {
+        const data = await adminSetLock(pin, items);
+        setLocked(data.presentations || []);
+      } catch {
+        setError(t("failedToLock"));
+      } finally {
+        setSaving(false);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [pin]
+  );
+
+  function handleToggle(uuid: string, name: string) {
+    if (isAdded(uuid)) {
+      persistLock(currentItems().filter((it) => it.uuid !== uuid));
+    } else {
+      persistLock([...currentItems(), { uuid, name }]);
     }
   }
 
-  async function handleUnlock() {
+  // Toggle an entire playlist: if all its presentations are already selected,
+  // remove them; otherwise add (merge) them. The server de-dupes by uuid.
+  async function handleToggleWholePlaylist(playlistId: string) {
+    setSaving(true);
+    setError("");
+    try {
+      let found = playlistPresentations[playlistId];
+      if (!found) {
+        const data = await adminGetPlaylist(pin, playlistId);
+        found = collectPresentations(data?.items || []);
+        setPlaylistPresentations((m) => ({ ...m, [playlistId]: found! }));
+      }
+      const allSelected =
+        found.length > 0 && found.every((p) => isAdded(p.uuid));
+      let items: { uuid: string; name: string }[];
+      if (allSelected) {
+        const ids = new Set(found.map((p) => p.uuid));
+        items = currentItems().filter((it) => !ids.has(it.uuid));
+      } else {
+        items = [...currentItems(), ...found];
+      }
+      const res = await adminSetLock(pin, items);
+      setLocked(res.presentations || []);
+    } catch {
+      setError(t("failedToLock"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleClearAll() {
+    setSaving(true);
     try {
       await adminUnlock(pin);
-      setLocked(null);
+      setLocked([]);
     } catch {
       setError(t("failedToUnlock"));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -266,18 +379,57 @@ export default function AdminPanel({ pin, onLogout }: Props) {
       </div>
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
-        {locked ? (
-          <div className="flex items-center justify-between gap-3">
-            <span>
-              {t("lockedLabel")}: <strong>{locked.name}</strong> ({locked.slideCount}{" "}
-              {plural("slides", locked.slideCount)})
-            </span>
-            <button className={btnDanger} onClick={handleUnlock}>
-              {t("unlock")}
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">
+            {t("chosenPresentations")}
+            {locked.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-fg-muted">
+                ({locked.length})
+              </span>
+            )}
+          </h2>
+          {locked.length > 0 && (
+            <button
+              className={btnDanger}
+              onClick={handleClearAll}
+              disabled={saving}
+            >
+              {t("clearAll")}
             </button>
-          </div>
-        ) : (
+          )}
+        </div>
+        {locked.length === 0 ? (
           <p className="text-sm text-fg-muted">{t("noPresentationLocked")}</p>
+        ) : (
+          <ul className="list-none">
+            {locked.map((p, i) => (
+              <li
+                key={p.uuid}
+                className="flex items-center justify-between gap-3 border-b border-white/[0.04] py-2 last:border-b-0 text-sm"
+              >
+                <span className="min-w-0 truncate">
+                  <span className="mr-1.5 text-fg-muted tabular-nums">
+                    {i + 1}.
+                  </span>
+                  {p.name}{" "}
+                  <span className="text-fg-muted">
+                    ({p.slideCount} {plural("slides", p.slideCount)})
+                  </span>
+                </span>
+                <button
+                  className={btnSmall}
+                  onClick={() =>
+                    persistLock(
+                      currentItems().filter((it) => it.uuid !== p.uuid)
+                    )
+                  }
+                  disabled={saving}
+                >
+                  {t("remove")}
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
@@ -291,14 +443,25 @@ export default function AdminPanel({ pin, onLogout }: Props) {
       )}
 
       <ul className="list-none">
-        {playlists.map((pl) => (
+        {playlists.map((pl) => {
+          const plSelected = playlistFullySelected(pl.id.uuid);
+          return (
           <li key={pl.id.uuid}>
-            <button
-              onClick={() => togglePlaylist(pl.id.uuid)}
-              className="block w-full border-0 border-b border-white/5 bg-transparent p-3 text-left text-[15px] text-fg"
-            >
-              {expandedPlaylist === pl.id.uuid ? "v" : ">"} {pl.id.name}
-            </button>
+            <div className="flex items-center gap-2 border-b border-white/5">
+              <button
+                onClick={() => togglePlaylist(pl.id.uuid)}
+                className="flex-1 border-0 bg-transparent p-3 text-left text-[15px] text-fg"
+              >
+                {expandedPlaylist === pl.id.uuid ? "v" : ">"} {pl.id.name}
+              </button>
+              <button
+                className={plSelected ? btnUnselect : btnLock}
+                onClick={() => handleToggleWholePlaylist(pl.id.uuid)}
+                disabled={saving}
+              >
+                {plSelected ? t("unselect") : t("lockPlaylist")}
+              </button>
+            </div>
 
             {expandedPlaylist === pl.id.uuid && (
               <ul className="list-none pl-4">
@@ -308,25 +471,24 @@ export default function AdminPanel({ pin, onLogout }: Props) {
                 {playlistItems
                   .filter((item) => item.type === "presentation")
                   .map((item, i) => {
-                    const presUuid =
-                      item.presentation_info?.presentation_uuid ||
-                      item.id.uuid;
+                    const presUuid = presUuidOf(item);
+                    const added = isAdded(presUuid);
                     return (
                       <li
                         key={presUuid || i}
                         className="flex items-center justify-between border-b border-white/[0.04] px-3 py-2.5 text-sm"
                       >
-                        <span>{item.id?.name || t("untitled")}</span>
+                        <span className="min-w-0 truncate">
+                          {item.id?.name || t("untitled")}
+                        </span>
                         <button
-                          className={btnLock}
-                          onClick={() => handleLock(presUuid, item.id.name)}
-                          disabled={locked?.uuid === presUuid || lockingUuid !== null}
+                          className={added ? btnUnselect : btnLock}
+                          onClick={() =>
+                            handleToggle(presUuid, item.id.name)
+                          }
+                          disabled={saving}
                         >
-                          {lockingUuid === presUuid
-                            ? t("loading")
-                            : locked?.uuid === presUuid
-                              ? t("lockedLabel")
-                              : t("lock")}
+                          {added ? t("unselect") : t("add")}
                         </button>
                       </li>
                     );
@@ -334,7 +496,8 @@ export default function AdminPanel({ pin, onLogout }: Props) {
               </ul>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );
