@@ -124,7 +124,30 @@ function connect(): Promise<void> {
   return connectPromise;
 }
 
+// Serialize requests that share a reply action. The remote protocol has no
+// request IDs and we match replies FIFO by action (see the message handler), so
+// two in-flight requests of the same reply action would race and could swap each
+// other's responses — e.g. presentation A receiving presentation B's slides.
+// Chaining per reply action guarantees a single outstanding request per action,
+// so every reply maps to the request that asked for it.
+const requestChains = new Map<string, Promise<unknown>>();
+
 function request(
+  action: string,
+  replyAction: string,
+  extra: Record<string, unknown> = {}
+): Promise<any> {
+  const prev = requestChains.get(replyAction) ?? Promise.resolve();
+  const run = prev.catch(() => {}).then(() => sendRequest(action, replyAction, extra));
+  // Keep the chain alive even if this request fails, so the next one still runs.
+  requestChains.set(
+    replyAction,
+    run.catch(() => {})
+  );
+  return run;
+}
+
+function sendRequest(
   action: string,
   replyAction: string,
   extra: Record<string, unknown> = {}
@@ -260,20 +283,39 @@ export async function getLibrary(_id: string) {
   };
 }
 
-export async function getPresentation(uuid: string) {
-  let raw = presentationCache.get(uuid);
-  if (!raw) {
+// Dedupe concurrent fetches of the same presentation. The speaker view loads
+// every slide's thumbnail at once, so without this each slide would kick off its
+// own presentationRequest for the same presentation.
+const presentationInFlight = new Map<string, Promise<any>>();
+
+// Resolve the raw presentation payload (cached, deduped per uuid). Used by both
+// getPresentation and getSlideThumb so a presentation is fetched at most once.
+function ensureRaw(uuid: string): Promise<any> {
+  const cached = presentationCache.get(uuid);
+  if (cached) return Promise.resolve(cached);
+  let inflight = presentationInFlight.get(uuid);
+  if (!inflight) {
     // Omitting presentationSlideQuality requests the highest available quality.
     // The official remote uses 100 as a fast first pass; this app prefers crisp
     // thumbnails up front since we only fetch once per presentation.
-    const resp = await request("presentationRequest", "presentationCurrent", {
+    inflight = request("presentationRequest", "presentationCurrent", {
       presentationPath: uuid,
-    });
-    raw = resp.presentation;
-    if (raw) {
-      presentationCache.set(uuid, raw);
-    }
+    })
+      .then((resp) => {
+        const raw = resp.presentation;
+        if (raw) presentationCache.set(uuid, raw);
+        return raw;
+      })
+      .finally(() => {
+        presentationInFlight.delete(uuid);
+      });
+    presentationInFlight.set(uuid, inflight);
   }
+  return inflight;
+}
+
+export async function getPresentation(uuid: string) {
+  const raw = await ensureRaw(uuid);
   const groups = ((raw && raw.presentationSlideGroups) || []).map((g: any) => ({
     name: g.groupName,
     slides: (g.groupSlides || []).map((s: any, i: number) => ({
@@ -312,11 +354,7 @@ export async function getSlideThumb(
   arrayBuffer: () => Promise<ArrayBuffer>;
   headers: { get: (k: string) => string | null };
 }> {
-  let raw = presentationCache.get(uuid);
-  if (!raw) {
-    await getPresentation(uuid);
-    raw = presentationCache.get(uuid);
-  }
+  const raw = await ensureRaw(uuid);
   const b64 = findSlideImage(raw, slideIndex);
   if (!b64) throw new Error(`slide image not available: ${slideIndex}`);
   const buf = Buffer.from(b64, "base64");
