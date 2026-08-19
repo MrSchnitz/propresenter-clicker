@@ -118,6 +118,7 @@ export interface ConnectionSettings {
   ppProtocol: "ws" | "rest";
   ppPassword: string;
   adminPin: string;
+  appPort: string;
 }
 
 export async function adminGetSettings(pin: string) {

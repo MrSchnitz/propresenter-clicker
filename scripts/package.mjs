@@ -15,8 +15,10 @@ const payloadRel = isMac
   : "app";
 const payload = join(outDir, ...payloadRel.split("/"));
 
-// Clean previous build
-if (existsSync(outDir)) rmSync(outDir, { recursive: true });
+// Clean previous build. Retries because Finder may drop a .DS_Store into the
+// tree mid-delete, which otherwise fails the whole run.
+if (existsSync(outDir))
+  rmSync(outDir, { recursive: true, force: true, maxRetries: 5 });
 mkdirSync(payload, { recursive: true });
 
 // Copy built frontend + server
@@ -54,7 +56,12 @@ writeFileSync(
   `#!/bin/bash
 cd "$(dirname "$0")"
 export SETTINGS_FILE="$HOME/Library/Application Support/${appName}/settings.json"
+# Port: .env default, overridden by an appPort saved from the admin panel.
 PORT=$(grep -E '^APP_PORT=' .env | cut -d= -f2)
+if [ -f "$SETTINGS_FILE" ]; then
+  SAVED=$(sed -n 's/.*"appPort"[[:space:]]*:[[:space:]]*"\\([0-9]*\\)".*/\\1/p' "$SETTINGS_FILE")
+  [ -n "$SAVED" ] && PORT=$SAVED
+fi
 PORT=\${PORT:-3000}
 (sleep 2 && open "http://localhost:$PORT") &
 NODE_ENV=production npx tsx server/index.ts
@@ -79,6 +86,10 @@ cd /d "%~dp0${payloadWin}"
 set NODE_ENV=production
 set PORT=3000
 for /f "tokens=2 delims==" %%a in ('findstr /b APP_PORT= .env') do set PORT=%%a
+rem An appPort saved from the admin panel (data\\settings.json) wins over .env.
+if exist data\\settings.json (
+  for /f tokens^=4^ delims^=^" %%a in ('findstr "appPort" data\\settings.json') do set PORT=%%a
+)
 start "" /min cmd /c "timeout /t 3 >nul & start "" http://localhost:%PORT%"
 npx tsx server/index.ts
 `

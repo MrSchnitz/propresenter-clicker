@@ -8,9 +8,8 @@ import { resetConnection } from "./proPresenterWsApi.js";
 // changes so they survive restarts. .env / CLI args act as first-run defaults —
 // once something is saved from the admin UI, the saved value wins.
 //
-// APP_PORT and ALLOWED_HOSTS are intentionally not here: the server is already
-// listening / Vite is already configured by the time they could change, so
-// those still require a restart and live in .env only.
+// appPort is persisted like the rest but only takes effect on the next start —
+// the server is already listening by the time it could change.
 
 export interface AppSettings {
   ppHost: string;
@@ -18,6 +17,7 @@ export interface AppSettings {
   ppProtocol: "ws" | "rest";
   ppPassword: string;
   adminPin: string;
+  appPort: string;
 }
 
 const DEFAULTS: AppSettings = {
@@ -26,6 +26,7 @@ const DEFAULTS: AppSettings = {
   ppProtocol: "ws",
   ppPassword: "",
   adminPin: "1234",
+  appPort: "3000",
 };
 
 function settingsFile(): string {
@@ -44,6 +45,7 @@ export function getSettings(): AppSettings {
       (env.PROPRESENTER_PROTOCOL || "").toLowerCase() === "rest" ? "rest" : "ws",
     ppPassword: env.PROPRESENTER_PASSWORD ?? DEFAULTS.ppPassword,
     adminPin: env.ADMIN_PIN || DEFAULTS.adminPin,
+    appPort: env.APP_PORT || DEFAULTS.appPort,
   };
 }
 
@@ -53,6 +55,7 @@ function applyToEnv(s: AppSettings): void {
   process.env.PROPRESENTER_PROTOCOL = s.ppProtocol;
   process.env.PROPRESENTER_PASSWORD = s.ppPassword;
   process.env.ADMIN_PIN = s.adminPin;
+  process.env.APP_PORT = s.appPort;
 }
 
 // Called once at boot (after dotenv and CLI args): overlay whatever was saved
@@ -110,6 +113,15 @@ export function updateSettings(patch: Partial<AppSettings>): UpdateResult {
     const pin = String(patch.adminPin).trim();
     if (!pin) throw new Error("Admin PIN must not be empty");
     next.adminPin = pin;
+  }
+  if (patch.appPort !== undefined) {
+    const port = String(patch.appPort).trim();
+    if (!/^\d+$/.test(port) || +port < 1 || +port > 65535) {
+      throw new Error("App port must be a number between 1 and 65535");
+    }
+    // Persisted and applied on the next start; the running server keeps
+    // listening on its current port.
+    next.appPort = port;
   }
 
   applyToEnv(next);

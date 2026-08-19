@@ -22,21 +22,18 @@ ProPresenter 7.9+ exposes a REST API; earlier versions (7.0–7.8) only expose a
 
 ## Configuration
 
-Most settings are editable at runtime in the admin panel (`/admin`):
+Everything is editable at runtime in the admin panel (`/admin`):
 
 - **ProPresenter connection** — host, port, protocol (ws/rest), and password (ws mode only; the REST API has no auth). Changes apply immediately, no restart needed.
-- **Admin PIN** and **Speaker PIN** — each in its own section.
+- **App settings** — admin PIN (applies immediately) and the app's own port (applies after a restart).
+- **Speaker PIN** — optional PIN gating the speaker view.
 
 Saved settings are persisted to `data/settings.json` and survive restarts.
 
-`.env` in the project root provides the startup config (see `.env.example`):
+`.env` in the project root provides the first-run defaults (see `.env.example`) — used until settings are saved in the admin panel; after that, `data/settings.json` takes precedence on every startup:
 
 ```
-# Required (changing it needs a restart)
-APP_PORT=3000
-
-# First-run defaults — used until settings are saved in the admin panel;
-# after that, data/settings.json takes precedence on every startup.
+APP_PORT=3000                    # in Docker, change the port here (compose reads it)
 PROPRESENTER_HOST=localhost      # or a LAN IP; auto-mapped to the host in Docker
 PROPRESENTER_PORT=56650          # match your ProPresenter network port
 PROPRESENTER_PROTOCOL=ws         # ws (default, all versions) | rest (7.9+ only)
@@ -54,7 +51,7 @@ docker compose up --build
 
 Open http://localhost:3000. A `PROPRESENTER_HOST` of `localhost` is automatically rewritten to `host.docker.internal` inside the container, so the same `.env` works with ProPresenter running on the host (macOS, Windows, and Linux via `host-gateway`).
 
-The compose file mounts `./data`, so settings saved in the admin panel survive container restarts and rebuilds.
+The compose file mounts `./data`, so settings saved in the admin panel survive container restarts and rebuilds. One exception: don't change the **app port** from the admin panel when running in Docker — the host↔container port mapping comes from `APP_PORT` in `.env`, so change it there and re-run `docker compose up`.
 
 Stop with `docker compose down`.
 
@@ -66,6 +63,17 @@ npm run dev        # vite + server with hot reload
 # or
 npm run build && npm start
 ```
+
+## Package as a desktop app
+
+```bash
+npm run package
+```
+
+Creates `./propresenter-clicker/` — a self-contained distribution you can zip and hand to anyone (no git, no Docker). The only requirement on the target machine is Node.js 22+.
+
+- **macOS** — `ProPresenter Clicker.app` is fully self-contained: move it anywhere (e.g. `/Applications`) and double-click. It opens the server in a Terminal window (Ctrl+C stops it) and then the browser. First launch of the unsigned app needs right-click → Open. Settings are stored in `~/Library/Application Support/ProPresenter Clicker/`, so they survive app updates.
+- **Windows** — double-click `start.bat`, or run `create-desktop-shortcut.bat` once to get a Desktop icon.
 
 ## Troubleshooting
 

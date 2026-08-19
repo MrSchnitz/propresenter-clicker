@@ -427,6 +427,11 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
     settingsDraft.adminPin.trim() !== "" &&
     settingsDraft.adminPin.trim() !== settings.adminPin;
 
+  const appPortDirty =
+    !!settingsDraft && !!settings && settingsDraft.appPort !== settings.appPort;
+
+  const appSettingsDirty = adminPinDirty || appPortDirty;
+
   async function handleSaveSettings() {
     if (!settingsDraft) return;
     setSettingsSaving(true);
@@ -471,12 +476,17 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
     setAdminPinSaving(true);
     setAdminPinNotice(null);
     try {
-      const res = await adminUpdateSettings(pin, {
-        adminPin: settingsDraft.adminPin.trim(),
-      });
+      // Send only what changed — an untouched (or cleared) PIN field must not
+      // block saving a new app port.
+      const patch: Partial<ConnectionSettings> = {};
+      if (adminPinDirty) patch.adminPin = settingsDraft.adminPin.trim();
+      if (appPortDirty) patch.appPort = settingsDraft.appPort;
+      const res = await adminUpdateSettings(pin, patch);
       const next: ConnectionSettings = res.settings;
       setSettings(next);
-      setSettingsDraft((d) => (d ? { ...d, adminPin: next.adminPin } : next));
+      setSettingsDraft((d) =>
+        d ? { ...d, adminPin: next.adminPin, appPort: next.appPort } : next
+      );
       setAdminPinNotice(
         res.persisted
           ? { kind: "ok", text: t("settingsSaved") }
@@ -662,25 +672,46 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
         >
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Icon path={ICON_LOCK} />
-            {t("adminPinSection")}
+            {t("appSection")}
           </h2>
           <Chevron open={adminPinOpen} />
         </button>
         {adminPinOpen && (
         <div className="mt-3">
-        <p className="mb-3 text-xs text-fg-muted">{t("adminPinHelp")}</p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={settingsDraft?.adminPin ?? ""}
-            onChange={(e) => updateSettingsDraft("adminPin", e.target.value)}
-            className="flex-1 rounded-app border border-white/10 bg-card p-2.5 text-sm text-fg outline-none focus:border-accent"
-          />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="text-xs text-fg-muted">
+            {t("adminPinLabel")}
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={inputCls}
+              value={settingsDraft?.adminPin ?? ""}
+              onChange={(e) => updateSettingsDraft("adminPin", e.target.value)}
+            />
+            <span className="mt-1 block text-[11px] text-fg-muted/80">
+              {t("adminPinHelp")}
+            </span>
+          </label>
+          <label className="text-xs text-fg-muted">
+            {t("appPortLabel")}
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className={inputCls}
+              value={settingsDraft?.appPort ?? ""}
+              onChange={(e) => updateSettingsDraft("appPort", e.target.value)}
+            />
+            <span className="mt-1 block text-[11px] text-fg-muted/80">
+              {t("appPortHelp")}
+            </span>
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
           <button
             onClick={handleSaveAdminPin}
-            disabled={adminPinSaving || !adminPinDirty}
+            disabled={adminPinSaving || !appSettingsDirty}
             className={btnPrimary}
           >
             {adminPinSaving ? <Spinner /> : t("save")}

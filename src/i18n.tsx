@@ -72,8 +72,10 @@ const translations: Record<Lang, Dict> = {
     ppProtocolLabel: "Protokol",
     ppPasswordLabel: "Heslo",
     adminPinLabel: "Admin PIN",
-    adminPinSection: "Admin PIN",
+    appSection: "Nastavení aplikace",
     adminPinHelp: "PIN pro přístup do této administrace.",
+    appPortLabel: "Port aplikace",
+    appPortHelp: "Projeví se po restartu aplikace.",
     settingsSaved: "Uloženo",
     settingsNotPersisted:
       "Nastavení je aktivní, ale nepodařilo se ho uložit na disk — po restartu se vrátí původní hodnoty.",
@@ -134,8 +136,10 @@ const translations: Record<Lang, Dict> = {
     ppProtocolLabel: "Protocol",
     ppPasswordLabel: "Password",
     adminPinLabel: "Admin PIN",
-    adminPinSection: "Admin PIN",
+    appSection: "App settings",
     adminPinHelp: "PIN required to access this admin panel.",
+    appPortLabel: "App port",
+    appPortHelp: "Takes effect after the app restarts.",
     settingsSaved: "Saved",
     settingsNotPersisted:
       "Settings are active but could not be saved to disk — they will revert after a restart.",
