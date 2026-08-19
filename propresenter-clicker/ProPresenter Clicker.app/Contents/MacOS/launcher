@@ -1,0 +1,3 @@
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")/../Resources/app" && pwd)"
+open -a Terminal "$DIR/run.command"
