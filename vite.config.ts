@@ -7,6 +7,9 @@ import { VitePWA } from "vite-plugin-pwa";
 // server — in dev via Vite middleware mode, in prod via static dist. So no dev
 // server port / API proxy is configured here.
 export default defineConfig({
+  server: {
+    allowedHosts: true,
+  },
   plugins: [
     react(),
     tailwindcss(),
