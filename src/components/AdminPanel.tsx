@@ -38,15 +38,76 @@ interface LockedInfo {
 const inputCls =
   "mt-1 w-full rounded-app border border-white/10 bg-card p-2.5 text-sm text-fg outline-none focus:border-accent";
 const btnSmall =
-  "rounded-app border border-fg-muted bg-transparent px-3.5 py-1.5 text-[13px] text-fg-muted";
+  "rounded-app border border-fg-muted bg-transparent px-3.5 py-1.5 text-[13px] text-fg-muted transition-colors hover:border-fg hover:text-fg";
 const btnDanger =
-  "whitespace-nowrap rounded-app bg-accent px-3.5 py-1.5 text-[13px] text-white";
+  "whitespace-nowrap rounded-app bg-accent px-3.5 py-1.5 text-[13px] text-white transition-colors hover:bg-accent/85";
 const btnLock =
-  "whitespace-nowrap rounded-app border border-success bg-transparent px-3 py-1 text-xs text-success disabled:opacity-50";
+  "whitespace-nowrap rounded-app border border-success bg-transparent px-3 py-1 text-xs text-success transition-colors hover:bg-success/10 disabled:opacity-50";
 // Selected state doubles as the "unselect" action — styled with the app's
 // accent (red/pink), matching the other destructive buttons (e.g. Clear all).
 const btnUnselect =
-  "whitespace-nowrap rounded-app border border-accent bg-accent px-3 py-1 text-xs text-white disabled:opacity-50";
+  "whitespace-nowrap rounded-app border border-accent bg-accent px-3 py-1 text-xs text-white transition-colors hover:bg-accent/85 disabled:opacity-50";
+const btnPrimary =
+  "flex items-center justify-center rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent/85 disabled:opacity-50";
+// Icon-only button (e.g. remove ✕ in the chosen list).
+const btnIcon =
+  "rounded-app border border-fg-muted/40 bg-transparent p-1.5 text-fg-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50";
+
+// Shared stroke-icon wrapper so the individual icons stay one-liners.
+function Icon({ path, className }: { path: string; className?: string }) {
+  return (
+    <svg
+      className={className ?? "h-4 w-4 shrink-0 text-fg-muted"}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={path} />
+    </svg>
+  );
+}
+
+// Chevron that points right when closed and rotates down when open.
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <Icon
+      path="M9 6l6 6-6 6"
+      className={`h-4 w-4 shrink-0 text-fg-muted transition-transform duration-200 ${
+        open ? "rotate-90" : ""
+      }`}
+    />
+  );
+}
+
+const ICON_SLIDERS =
+  "M21 4h-7 M10 4H3 M21 12h-9 M8 12H3 M21 20h-5 M12 20H3 M14 2v4 M8 10v4 M16 18v4";
+const ICON_LOCK = "M5 11h14v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z M8 11V7a4 4 0 0 1 8 0v4";
+const ICON_USER = "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21v-1a8 8 0 0 1 16 0v1";
+const ICON_LIST = "M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01";
+const ICON_TRASH =
+  "M3 6h18 M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6";
+const ICON_X = "M18 6L6 18 M6 6l12 12";
+const ICON_LOGOUT = "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9";
+
+function Spinner() {
+  return (
+    <svg
+      className="h-4 w-4 animate-spin"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M12 2a10 10 0 1 0 10 10" />
+    </svg>
+  );
+}
 
 // The uuid used to trigger/fetch a presentation comes from presentation_info
 // when present (REST), falling back to the item's own uuid (WS library items).
@@ -448,10 +509,34 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
   return (
     <div className="mx-auto max-w-[600px] p-4">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-[22px]">{t("admin")}</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-[22px]">{t("admin")}</h1>
+          {/* Live PP connection dot, driven by the same health poll as the
+              banner: green = reachable, red = down, gray = not checked yet. */}
+          <span
+            className={`inline-block h-2.5 w-2.5 rounded-full ${
+              ppConnected === null
+                ? "bg-fg-muted/40"
+                : ppConnected
+                  ? "bg-success"
+                  : "bg-accent"
+            }`}
+            title={
+              ppConnected === null
+                ? t("loading")
+                : ppConnected
+                  ? t("ppStatusOnline")
+                  : t("ppNotConnected")
+            }
+          />
+        </div>
         <div className="flex items-center gap-2">
           <LanguageToggle />
-          <button className={btnSmall} onClick={onLogout}>
+          <button
+            className={`${btnSmall} flex items-center gap-1.5`}
+            onClick={onLogout}
+          >
+            <Icon path={ICON_LOGOUT} className="h-3.5 w-3.5 shrink-0" />
             {t("logout")}
           </button>
         </div>
@@ -482,8 +567,11 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
           className="flex w-full items-center justify-between border-0 bg-transparent p-0 text-left"
           onClick={() => setSettingsOpen((o) => !o)}
         >
-          <h2 className="text-base font-semibold">{t("connectionSection")}</h2>
-          <span className="text-fg-muted">{settingsOpen ? "v" : ">"}</span>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Icon path={ICON_SLIDERS} />
+            {t("connectionSection")}
+          </h2>
+          <Chevron open={settingsOpen} />
         </button>
         {settingsOpen && settingsDraft && (
           <div className="mt-3">
@@ -545,9 +633,9 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
               <button
                 onClick={handleSaveSettings}
                 disabled={settingsSaving || !settingsDirty}
-                className="rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className={btnPrimary}
               >
-                {t("save")}
+                {settingsSaving ? <Spinner /> : t("save")}
               </button>
               {settingsNotice && (
                 <p
@@ -572,8 +660,11 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
           className="flex w-full items-center justify-between border-0 bg-transparent p-0 text-left"
           onClick={() => setAdminPinOpen((o) => !o)}
         >
-          <h2 className="text-base font-semibold">{t("adminPinSection")}</h2>
-          <span className="text-fg-muted">{adminPinOpen ? "v" : ">"}</span>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Icon path={ICON_LOCK} />
+            {t("adminPinSection")}
+          </h2>
+          <Chevron open={adminPinOpen} />
         </button>
         {adminPinOpen && (
         <div className="mt-3">
@@ -590,9 +681,9 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
           <button
             onClick={handleSaveAdminPin}
             disabled={adminPinSaving || !adminPinDirty}
-            className="rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className={btnPrimary}
           >
-            {t("save")}
+            {adminPinSaving ? <Spinner /> : t("save")}
           </button>
         </div>
         {adminPinNotice && (
@@ -613,7 +704,10 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
       </div>
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
-        <h2 className="mb-1 text-base font-semibold">{t("speakerPinSection")}</h2>
+        <h2 className="mb-1 flex items-center gap-2 text-base font-semibold">
+          <Icon path={ICON_USER} />
+          {t("speakerPinSection")}
+        </h2>
         <p className="mb-3 text-xs text-fg-muted">{t("speakerPinHelp")}</p>
         <p className="mb-3 text-sm">
           {speakerPin ? t("speakerPinIsSet") : t("speakerPinNotSet")}
@@ -631,9 +725,9 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
           <button
             onClick={handleSaveSpeakerPin}
             disabled={speakerPinSaving || speakerPinDraft.trim() === (speakerPin ?? "")}
-            className="rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className={btnPrimary}
           >
-            {t("save")}
+            {speakerPinSaving ? <Spinner /> : t("save")}
           </button>
           <button
             onClick={handleClearSpeakerPin}
@@ -647,20 +741,22 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Icon path={ICON_LIST} />
             {t("chosenPresentations")}
             {locked.length > 0 && (
-              <span className="ml-2 text-sm font-normal text-fg-muted">
+              <span className="text-sm font-normal text-fg-muted">
                 ({locked.length})
               </span>
             )}
           </h2>
           {locked.length > 0 && (
             <button
-              className={btnDanger}
+              className={`${btnDanger} flex items-center gap-1.5`}
               onClick={handleClearAll}
               disabled={saving}
             >
+              <Icon path={ICON_TRASH} className="h-3.5 w-3.5 shrink-0" />
               {t("clearAll")}
             </button>
           )}
@@ -684,7 +780,9 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
                   </span>
                 </span>
                 <button
-                  className={btnSmall}
+                  className={btnIcon}
+                  aria-label={t("remove")}
+                  title={t("remove")}
                   onClick={() =>
                     persistLock(
                       currentItems().filter((it) => it.uuid !== p.uuid)
@@ -692,7 +790,7 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
                   }
                   disabled={saving}
                 >
-                  {t("remove")}
+                  <Icon path={ICON_X} className="h-4 w-4" />
                 </button>
               </li>
             ))}
@@ -722,9 +820,15 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
             <div className="flex items-center gap-2 border-b border-white/5">
               <button
                 onClick={() => togglePlaylist(pl.id.uuid)}
-                className="flex-1 border-0 bg-transparent p-3 text-left text-[15px] text-fg"
+                className="flex flex-1 items-center gap-2 border-0 bg-transparent p-3 text-left text-[15px] text-fg"
               >
-                {expandedPlaylist === pl.id.uuid ? "v" : ">"} {pl.id.name}
+                <Chevron open={expandedPlaylist === pl.id.uuid} />
+                <span className="min-w-0 truncate">{pl.id.name}</span>
+                {playlistPresentations[pl.id.uuid] && (
+                  <span className="text-xs text-fg-muted">
+                    ({playlistPresentations[pl.id.uuid].length})
+                  </span>
+                )}
               </button>
               <button
                 className={plSelected ? btnUnselect : btnLock}
