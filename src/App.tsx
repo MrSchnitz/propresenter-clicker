@@ -82,7 +82,11 @@ function AdminPage() {
     return <AdminLogin onAuth={handleAuth} />;
   }
 
-  return <AdminPanel pin={pin} onLogout={handleLogout} />;
+  // onPinChange: when the admin PIN is changed from the settings section, adopt
+  // the new PIN (and refresh the stored credential) so the session stays valid.
+  return (
+    <AdminPanel pin={pin} onLogout={handleLogout} onPinChange={handleAuth} />
+  );
 }
 
 export default function App() {

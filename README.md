@@ -4,9 +4,8 @@ A lightweight vibe-coded web app for remote clicking of selected ProPresenter pr
 
 ## Routes
 
-- `/` — Speaker view (slide thumbnails, next/previous, no auth)
-- `/admin` — Admin panel (PIN-protected; pick a presentation to lock)
-- `/dashboard` — Read-only status view
+- `/` — Speaker view (slide thumbnails, next/previous; optional speaker PIN)
+- `/admin` — Admin panel (PIN-protected; pick presentations, manage connection settings and PINs)
 
 ## Requirements
 
@@ -23,16 +22,29 @@ ProPresenter 7.9+ exposes a REST API; earlier versions (7.0–7.8) only expose a
 
 ## Configuration
 
-Create `.env` in the project root:
+Most settings are editable at runtime in the admin panel (`/admin`):
+
+- **ProPresenter connection** — host, port, protocol (ws/rest), and password (ws mode only; the REST API has no auth). Changes apply immediately, no restart needed.
+- **Admin PIN** and **Speaker PIN** — each in its own section.
+
+Saved settings are persisted to `data/settings.json` and survive restarts.
+
+`.env` in the project root provides the startup config (see `.env.example`):
 
 ```
-PROPRESENTER_HOST=localhost      # or host.docker.internal when running in Docker
+# Required (changing it needs a restart)
+APP_PORT=3000
+
+# First-run defaults — used until settings are saved in the admin panel;
+# after that, data/settings.json takes precedence on every startup.
+PROPRESENTER_HOST=localhost      # or a LAN IP; auto-mapped to the host in Docker
 PROPRESENTER_PORT=56650          # match your ProPresenter network port
 PROPRESENTER_PROTOCOL=ws         # ws (default, all versions) | rest (7.9+ only)
-PROPRESENTER_PASSWORD=           # required for ws mode; set in ProPresenter Network prefs
+PROPRESENTER_PASSWORD=           # ws mode only; set in ProPresenter Network prefs
 ADMIN_PIN=1234
-APP_PORT=3000
 ```
+
+To make `.env` authoritative again, delete `data/settings.json` and restart.
 
 ## Run with Docker (recommended)
 
@@ -40,7 +52,9 @@ APP_PORT=3000
 docker compose up --build
 ```
 
-Open http://localhost:3000. The compose file overrides `PROPRESENTER_HOST` to `host.docker.internal` so the container can reach ProPresenter running on the host (works on macOS, Windows, and Linux via `host-gateway`).
+Open http://localhost:3000. A `PROPRESENTER_HOST` of `localhost` is automatically rewritten to `host.docker.internal` inside the container, so the same `.env` works with ProPresenter running on the host (macOS, Windows, and Linux via `host-gateway`).
+
+The compose file mounts `./data`, so settings saved in the admin panel survive container restarts and rebuilds.
 
 Stop with `docker compose down`.
 
@@ -56,7 +70,8 @@ npm run build && npm start
 ## Troubleshooting
 
 - **502 "Cannot reach ProPresenter"** — the server can't talk to ProPresenter. Check that ProPresenter's network API is enabled, the port matches, and (in Docker) `PROPRESENTER_HOST=host.docker.internal`.
-- **Auth failure in ws mode** — `PROPRESENTER_PASSWORD` must match the password set in ProPresenter → Preferences → Network.
-- **Every REST call 404s** — you're on ProPresenter < 7.9. Switch `PROPRESENTER_PROTOCOL=ws`.
-- **Admin login fails** — `ADMIN_PIN` mismatch between client and server `.env`.
+- **Auth failure in ws mode** — the password must match the one set in ProPresenter → Preferences → Network.
+- **Every REST call 404s** — you're on ProPresenter < 7.9. Switch the protocol to `ws` in the admin panel.
+- **Admin login fails** — the PIN may have been changed in the admin panel; the current one lives in `data/settings.json`, not `.env`.
+- **`.env` changes seem ignored** — once settings are saved in the admin panel, `data/settings.json` overrides `.env`. Delete it and restart to fall back to `.env`.
 - **`/api/health`** returns `{"pp": true}` when the server can reach ProPresenter — a quick sanity check.

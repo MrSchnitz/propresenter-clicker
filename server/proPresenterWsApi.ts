@@ -102,8 +102,12 @@ function connect(): Promise<void> {
     });
 
     socket.on("close", () => {
-      ws = null;
-      connectPromise = null;
+      // Only clear the shared state if this socket is still the current one —
+      // resetConnection() may have already replaced it with a fresh connection.
+      if (ws === socket) {
+        ws = null;
+        connectPromise = null;
+      }
       settleReject(new Error("ProPresenter WebSocket closed"));
     });
 
@@ -122,6 +126,22 @@ function connect(): Promise<void> {
   });
 
   return connectPromise;
+}
+
+// Drop the current connection and all cached state so the next request
+// reconnects using the current env config. Called when connection settings
+// change at runtime (see settings.ts).
+export function resetConnection(): void {
+  const socket = ws;
+  ws = null;
+  connectPromise = null;
+  reconnectDelay = 500;
+  presentationCache.clear();
+  presentationInFlight.clear();
+  currentLocation = null;
+  hasKnownSlide = false;
+  failAllPending(new Error("ProPresenter connection settings changed"));
+  socket?.close();
 }
 
 // Serialize requests that share a reply action. The remote protocol has no

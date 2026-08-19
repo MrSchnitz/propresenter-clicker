@@ -48,4 +48,4 @@ Přihlášení platí 24 hodin. Pro ruční odhlášení klepni na tlačítko **
 
 **Tlačítka nereagují.** — Ujisti se, že jsi připojen/a na stejnou Wi-Fi síť jako zbytek sestavy. Stránku obnov (zatáhni dolů nebo zmáčkni F5).
 
-**Přihlášení do adminu nefunguje.** — Zkontroluj PIN s technikem (ideálně se podívat na hodnotu `ADMIN_PIN` v .env souboru ve složce aplikace). Přihlášení vyprší po 24 hodinách.
+**Přihlášení do adminu nefunguje.** — Zkontroluj PIN s technikem. Aktuální PIN je v souboru `data/settings.json` ve složce aplikace (pokud byl někdy změněn v adminu), jinak platí hodnota `ADMIN_PIN` v `.env`. Přihlášení vyprší po 24 hodinách.

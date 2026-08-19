@@ -61,6 +61,22 @@ const translations: Record<Lang, Dict> = {
     speakerPinPlaceholder: "Nový PIN",
     save: "Uložit",
     clear: "Smazat",
+
+    // Connection settings section
+    connectionSection: "Připojení k ProPresenteru",
+    connectionHelp:
+      "Změny se použijí okamžitě a zůstanou uložené i po restartu.",
+    ppHostLabel: "Adresa (host)",
+    ppPortLabel: "Port",
+    ppProtocolLabel: "Protokol",
+    ppPasswordLabel: "Heslo",
+    adminPinLabel: "Admin PIN",
+    adminPinSection: "Admin PIN",
+    adminPinHelp: "PIN pro přístup do této administrace.",
+    settingsSaved: "Uloženo",
+    settingsNotPersisted:
+      "Nastavení je aktivní, ale nepodařilo se ho uložit na disk — po restartu se vrátí původní hodnoty.",
+    settingsSaveFailed: "Uložení se nezdařilo",
   },
   en: {
     loginTitle: "Admin Login",
@@ -108,6 +124,20 @@ const translations: Record<Lang, Dict> = {
     speakerPinPlaceholder: "New PIN",
     save: "Save",
     clear: "Clear",
+
+    connectionSection: "ProPresenter connection",
+    connectionHelp: "Changes apply immediately and persist across restarts.",
+    ppHostLabel: "Host",
+    ppPortLabel: "Port",
+    ppProtocolLabel: "Protocol",
+    ppPasswordLabel: "Password",
+    adminPinLabel: "Admin PIN",
+    adminPinSection: "Admin PIN",
+    adminPinHelp: "PIN required to access this admin panel.",
+    settingsSaved: "Saved",
+    settingsNotPersisted:
+      "Settings are active but could not be saved to disk — they will revert after a restart.",
+    settingsSaveFailed: "Failed to save",
   },
 };
 

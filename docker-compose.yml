@@ -13,6 +13,10 @@ services:
       PROPRESENTER_PASSWORD: ${PROPRESENTER_PASSWORD:-}
       ADMIN_PIN: ${ADMIN_PIN:-1234}
       APP_PORT: ${APP_PORT:-3000}
+    volumes:
+      # Settings saved from the admin UI (data/settings.json) survive
+      # container restarts and rebuilds.
+      - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

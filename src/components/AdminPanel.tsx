@@ -7,6 +7,9 @@ import {
   adminGetLock,
   adminGetSpeakerPin,
   adminSetSpeakerPin,
+  adminGetSettings,
+  adminUpdateSettings,
+  ConnectionSettings,
 } from "../api";
 import { useI18n } from "../i18n";
 import LanguageToggle from "./LanguageToggle";
@@ -14,6 +17,9 @@ import LanguageToggle from "./LanguageToggle";
 interface Props {
   pin: string;
   onLogout: () => void;
+  // Called when the admin PIN is changed from the settings section, so the
+  // parent can adopt the new PIN (subsequent requests must use it).
+  onPinChange: (pin: string) => void;
 }
 
 interface PlaylistItem {
@@ -29,6 +35,8 @@ interface LockedInfo {
   slideCount: number;
 }
 
+const inputCls =
+  "mt-1 w-full rounded-app border border-white/10 bg-card p-2.5 text-sm text-fg outline-none focus:border-accent";
 const btnSmall =
   "rounded-app border border-fg-muted bg-transparent px-3.5 py-1.5 text-[13px] text-fg-muted";
 const btnDanger =
@@ -61,7 +69,7 @@ function collectPresentations(
   return out;
 }
 
-export default function AdminPanel({ pin, onLogout }: Props) {
+export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
   const { t, plural } = useI18n();
   const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
   const [expandedPlaylist, setExpandedPlaylist] = useState<string | null>(null);
@@ -80,6 +88,24 @@ export default function AdminPanel({ pin, onLogout }: Props) {
   const [error, setError] = useState("");
   // null = unknown (haven't checked yet), avoids banner flash on mount
   const [ppConnected, setPpConnected] = useState<boolean | null>(null);
+  // Connection settings: `settings` mirrors the server, `settingsDraft` is the
+  // form state; Save is enabled only when they differ.
+  const [settings, setSettings] = useState<ConnectionSettings | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<ConnectionSettings | null>(
+    null
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState<{
+    kind: "ok" | "warn" | "error";
+    text: string;
+  } | null>(null);
+  const [adminPinOpen, setAdminPinOpen] = useState(false);
+  const [adminPinSaving, setAdminPinSaving] = useState(false);
+  const [adminPinNotice, setAdminPinNotice] = useState<{
+    kind: "ok" | "warn" | "error";
+    text: string;
+  } | null>(null);
 
   const isAdded = useCallback(
     (uuid: string) => locked.some((l) => l.uuid === uuid),
@@ -117,6 +143,16 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     }
   }, [pin]);
 
+  const loadSettings = useCallback(async () => {
+    try {
+      const data = await adminGetSettings(pin);
+      setSettings(data.settings);
+      setSettingsDraft(data.settings);
+    } catch {
+      /* ignore */
+    }
+  }, [pin]);
+
   const loadPlaylists = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -124,6 +160,9 @@ export default function AdminPanel({ pin, onLogout }: Props) {
       const data = await adminGetPlaylists(pin);
       setPlaylists(data || []);
     } catch {
+      // Drop the previous list — leaving it up would suggest these playlists
+      // are still reachable on the (new/offline) connection.
+      setPlaylists([]);
       setError(t("cannotConnect"));
     } finally {
       setLoading(false);
@@ -136,7 +175,8 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     loadPlaylists();
     loadLock();
     loadSpeakerPin();
-  }, [loadLock, loadPlaylists, loadSpeakerPin]);
+    loadSettings();
+  }, [loadLock, loadPlaylists, loadSpeakerPin, loadSettings]);
 
   // Prefetch each playlist's presentations in the background so the "whole
   // playlist" buttons can show their selected state without the user expanding
@@ -302,6 +342,98 @@ export default function AdminPanel({ pin, onLogout }: Props) {
     }
   }
 
+  function updateSettingsDraft<K extends keyof ConnectionSettings>(
+    key: K,
+    value: ConnectionSettings[K]
+  ) {
+    setSettingsDraft((d) => (d ? { ...d, [key]: value } : d));
+    setSettingsNotice(null);
+    setAdminPinNotice(null);
+  }
+
+  // The admin PIN shares the settings endpoint but is edited in its own
+  // section, so connection dirtiness/saving deliberately excludes it.
+  const CONNECTION_KEYS = ["ppHost", "ppPort", "ppProtocol", "ppPassword"] as const;
+
+  const settingsDirty =
+    !!settingsDraft &&
+    !!settings &&
+    CONNECTION_KEYS.some((k) => settingsDraft[k] !== settings[k]);
+
+  const adminPinDirty =
+    !!settingsDraft &&
+    !!settings &&
+    settingsDraft.adminPin.trim() !== "" &&
+    settingsDraft.adminPin.trim() !== settings.adminPin;
+
+  async function handleSaveSettings() {
+    if (!settingsDraft) return;
+    setSettingsSaving(true);
+    setSettingsNotice(null);
+    try {
+      const res = await adminUpdateSettings(pin, {
+        ppHost: settingsDraft.ppHost,
+        ppPort: settingsDraft.ppPort,
+        ppProtocol: settingsDraft.ppProtocol,
+        ppPassword: settingsDraft.ppPassword,
+      });
+      const next: ConnectionSettings = res.settings;
+      setSettings(next);
+      // Keep an in-progress admin PIN edit; adopt the saved connection values.
+      setSettingsDraft((d) => (d ? { ...next, adminPin: d.adminPin } : next));
+      setSettingsNotice(
+        res.persisted
+          ? { kind: "ok", text: t("settingsSaved") }
+          : { kind: "warn", text: t("settingsNotPersisted") }
+      );
+      // The app may now be talking to a different ProPresenter — drop
+      // everything derived from the old connection and refetch.
+      setPlaylistPresentations({});
+      setExpandedPlaylist(null);
+      setPlaylistItems([]);
+      setPpConnected(null); // re-evaluated by the next health poll
+      loadPlaylists();
+      loadLock();
+    } catch (e) {
+      setSettingsNotice({
+        kind: "error",
+        text:
+          e instanceof Error && e.message ? e.message : t("settingsSaveFailed"),
+      });
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function handleSaveAdminPin() {
+    if (!settingsDraft) return;
+    setAdminPinSaving(true);
+    setAdminPinNotice(null);
+    try {
+      const res = await adminUpdateSettings(pin, {
+        adminPin: settingsDraft.adminPin.trim(),
+      });
+      const next: ConnectionSettings = res.settings;
+      setSettings(next);
+      setSettingsDraft((d) => (d ? { ...d, adminPin: next.adminPin } : next));
+      setAdminPinNotice(
+        res.persisted
+          ? { kind: "ok", text: t("settingsSaved") }
+          : { kind: "warn", text: t("settingsNotPersisted") }
+      );
+      // Adopt the new PIN so subsequent requests stay authorized.
+      if (next.adminPin !== pin) onPinChange(next.adminPin);
+    } catch (e) {
+      setAdminPinNotice({
+        kind: "error",
+        text:
+          e instanceof Error && e.message ? e.message : t("settingsSaveFailed"),
+      });
+    } finally {
+      setAdminPinSaving(false);
+    }
+  }
+
   async function handleClearSpeakerPin() {
     setSpeakerPinSaving(true);
     try {
@@ -344,6 +476,141 @@ export default function AdminPanel({ pin, onLogout }: Props) {
           </div>
         </div>
       )}
+
+      <div className="mb-5 rounded-app bg-surface p-3.5">
+        <button
+          className="flex w-full items-center justify-between border-0 bg-transparent p-0 text-left"
+          onClick={() => setSettingsOpen((o) => !o)}
+        >
+          <h2 className="text-base font-semibold">{t("connectionSection")}</h2>
+          <span className="text-fg-muted">{settingsOpen ? "v" : ">"}</span>
+        </button>
+        {settingsOpen && settingsDraft && (
+          <div className="mt-3">
+            <p className="mb-3 text-xs text-fg-muted">{t("connectionHelp")}</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="text-xs text-fg-muted">
+                {t("ppHostLabel")}
+                <input
+                  type="text"
+                  className={inputCls}
+                  value={settingsDraft.ppHost}
+                  onChange={(e) => updateSettingsDraft("ppHost", e.target.value)}
+                />
+              </label>
+              <label className="text-xs text-fg-muted">
+                {t("ppPortLabel")}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className={inputCls}
+                  value={settingsDraft.ppPort}
+                  onChange={(e) => updateSettingsDraft("ppPort", e.target.value)}
+                />
+              </label>
+              <label className="text-xs text-fg-muted">
+                {t("ppProtocolLabel")}
+                <select
+                  className={inputCls}
+                  value={settingsDraft.ppProtocol}
+                  onChange={(e) =>
+                    updateSettingsDraft(
+                      "ppProtocol",
+                      e.target.value as ConnectionSettings["ppProtocol"]
+                    )
+                  }
+                >
+                  <option value="ws">WebSocket (PP &lt; 7.9)</option>
+                  <option value="rest">REST (PP 7.9+)</option>
+                </select>
+              </label>
+              {/* The password only exists in the WS remote protocol — PP's
+                  REST API has no authentication, so hide the field there. */}
+              {settingsDraft.ppProtocol === "ws" && (
+                <label className="text-xs text-fg-muted">
+                  {t("ppPasswordLabel")}
+                  <input
+                    type="text"
+                    className={inputCls}
+                    value={settingsDraft.ppPassword}
+                    onChange={(e) =>
+                      updateSettingsDraft("ppPassword", e.target.value)
+                    }
+                  />
+                </label>
+              )}
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                onClick={handleSaveSettings}
+                disabled={settingsSaving || !settingsDirty}
+                className="rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {t("save")}
+              </button>
+              {settingsNotice && (
+                <p
+                  className={
+                    settingsNotice.kind === "ok"
+                      ? "text-sm text-success"
+                      : settingsNotice.kind === "warn"
+                        ? "text-sm text-fg-muted"
+                        : "text-sm text-accent"
+                  }
+                >
+                  {settingsNotice.text}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-5 rounded-app bg-surface p-3.5">
+        <button
+          className="flex w-full items-center justify-between border-0 bg-transparent p-0 text-left"
+          onClick={() => setAdminPinOpen((o) => !o)}
+        >
+          <h2 className="text-base font-semibold">{t("adminPinSection")}</h2>
+          <span className="text-fg-muted">{adminPinOpen ? "v" : ">"}</span>
+        </button>
+        {adminPinOpen && (
+        <div className="mt-3">
+        <p className="mb-3 text-xs text-fg-muted">{t("adminPinHelp")}</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={settingsDraft?.adminPin ?? ""}
+            onChange={(e) => updateSettingsDraft("adminPin", e.target.value)}
+            className="flex-1 rounded-app border border-white/10 bg-card p-2.5 text-sm text-fg outline-none focus:border-accent"
+          />
+          <button
+            onClick={handleSaveAdminPin}
+            disabled={adminPinSaving || !adminPinDirty}
+            className="rounded-app bg-accent px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {t("save")}
+          </button>
+        </div>
+        {adminPinNotice && (
+          <p
+            className={
+              adminPinNotice.kind === "ok"
+                ? "mt-2 text-sm text-success"
+                : adminPinNotice.kind === "warn"
+                  ? "mt-2 text-sm text-fg-muted"
+                  : "mt-2 text-sm text-accent"
+            }
+          >
+            {adminPinNotice.text}
+          </p>
+        )}
+        </div>
+        )}
+      </div>
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
         <h2 className="mb-1 text-base font-semibold">{t("speakerPinSection")}</h2>
@@ -435,6 +702,11 @@ export default function AdminPanel({ pin, onLogout }: Props) {
 
       {error && <p className="mt-2 text-sm text-accent">{error}</p>}
 
+      {/* While PP is known to be offline the playlist list is hidden — the
+          banner above already explains the state, and a stale list would look
+          selectable. */}
+      {ppConnected !== false && (
+      <>
       <h2 className="mb-3 text-base uppercase tracking-wider text-fg-muted">
         {t("playlists")}
       </h2>
@@ -499,6 +771,8 @@ export default function AdminPanel({ pin, onLogout }: Props) {
           );
         })}
       </ul>
+      </>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import routes from "./routes.js";
+import { loadSettings } from "./settings.js";
 
 // Support CLI args as fallback: --port 3000 --pp-host localhost --pp-port 56650 --pin 1234
 const args = process.argv.slice(2);
@@ -14,6 +15,10 @@ function getArg(name: string): string | undefined {
 if (getArg("pp-host")) process.env.PROPRESENTER_HOST = getArg("pp-host");
 if (getArg("pp-port")) process.env.PROPRESENTER_PORT = getArg("pp-port");
 if (getArg("pin")) process.env.ADMIN_PIN = getArg("pin");
+
+// Overlay settings saved from the admin UI (data/settings.json). They take
+// precedence over .env / CLI values, which act as first-run defaults.
+loadSettings();
 
 // Works in both ESM and CJS (pkg)
 const __dirname =

@@ -8,6 +8,7 @@ import {
   setSpeakerPin,
   LockedPresentation,
 } from "./state.js";
+import { getSettings, updateSettings } from "./settings.js";
 
 const router = Router();
 
@@ -171,6 +172,25 @@ router.put("/api/admin/speaker-pin", requirePin, (req, res) => {
   }
   setSpeakerPin(pin);
   res.json({ ok: true, pin: getSpeakerPin() });
+});
+
+// --- Connection settings (runtime-editable, persisted to data/settings.json) ---
+
+router.get("/api/admin/settings", requirePin, (_req, res) => {
+  // Same trust model as the speaker PIN endpoint: values (including the PP
+  // password) are returned as-is so the admin UI can pre-fill the form.
+  res.json({ settings: getSettings() });
+});
+
+router.put("/api/admin/settings", requirePin, (req, res) => {
+  try {
+    const result = updateSettings(req.body ?? {});
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res
+      .status(400)
+      .json({ error: e instanceof Error ? e.message : "Invalid settings" });
+  }
 });
 
 // --- Speaker routes (gated by speaker PIN when one is set) ---

@@ -112,6 +112,33 @@ export async function adminSetSpeakerPin(pin: string, speakerPin: string | null)
   );
 }
 
+export interface ConnectionSettings {
+  ppHost: string;
+  ppPort: string;
+  ppProtocol: "ws" | "rest";
+  ppPassword: string;
+  adminPin: string;
+}
+
+export async function adminGetSettings(pin: string) {
+  return asJson(
+    await fetch(`${BASE}/api/admin/settings`, { headers: authHeaders(pin) })
+  );
+}
+
+export async function adminUpdateSettings(
+  pin: string,
+  settings: Partial<ConnectionSettings>
+) {
+  return asJson(
+    await fetch(`${BASE}/api/admin/settings`, {
+      method: "PUT",
+      headers: authHeaders(pin),
+      body: JSON.stringify(settings),
+    })
+  );
+}
+
 // --- Speaker ---
 
 function speakerHeaders(pin?: string | null): HeadersInit {
