@@ -162,6 +162,7 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
     text: string;
   } | null>(null);
   const [adminPinOpen, setAdminPinOpen] = useState(false);
+  const [speakerPinOpen, setSpeakerPinOpen] = useState(false);
   const [adminPinSaving, setAdminPinSaving] = useState(false);
   const [adminPinNotice, setAdminPinNotice] = useState<{
     kind: "ok" | "warn" | "error";
@@ -735,10 +736,18 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
       </div>
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
-        <h2 className="mb-1 flex items-center gap-2 text-base font-semibold">
-          <Icon path={ICON_USER} />
-          {t("speakerPinSection")}
-        </h2>
+        <button
+          className="flex w-full items-center justify-between border-0 bg-transparent p-0 text-left"
+          onClick={() => setSpeakerPinOpen((o) => !o)}
+        >
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <Icon path={ICON_USER} />
+            {t("speakerPinSection")}
+          </h2>
+          <Chevron open={speakerPinOpen} />
+        </button>
+        {speakerPinOpen && (
+        <div className="mt-3">
         <p className="mb-3 text-xs text-fg-muted">{t("speakerPinHelp")}</p>
         <p className="mb-3 text-sm">
           {speakerPin ? t("speakerPinIsSet") : t("speakerPinNotSet")}
@@ -768,6 +777,8 @@ export default function AdminPanel({ pin, onLogout, onPinChange }: Props) {
             {t("clear")}
           </button>
         </div>
+        </div>
+        )}
       </div>
 
       <div className="mb-5 rounded-app bg-surface p-3.5">
